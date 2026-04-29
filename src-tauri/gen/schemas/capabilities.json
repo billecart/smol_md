@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default permissions for smol_md.","local":true,"windows":["main"],"permissions":["core:default","dialog:default","file-commands"]}}

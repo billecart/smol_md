@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "smol_md",
+  "version": "0.1.0",
+  "identifier": "com.smolmd.editor",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "smol_md",
+        "width": 1040,
+        "height": 760,
+        "minWidth": 720,
+        "minHeight": 560,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "publisher": "smol_md",
+    "icon": [
+      "icons/icon.ico"
+    ],
+    "shortDescription": "Tiny Markdown editor",
+    "longDescription": "A tiny focused Windows Markdown editor for opening one file, editing it, and saving it back as Markdown."
+  }
+}

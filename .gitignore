@@ -1,0 +1,8 @@
+node_modules/
+dist/
+src-tauri/target/
+dev-server*.log
+tauri-dev*.log
+release/
+*.bak
+*.tmp

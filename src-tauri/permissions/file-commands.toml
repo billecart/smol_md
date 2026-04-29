@@ -1,0 +1,8 @@
+[[permission]]
+identifier = "file-commands"
+description = "Allow smol_md to read and write Markdown files selected by the user."
+commands.allow = [
+  "read_markdown_file",
+  "write_markdown_file"
+]
+
