@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import {
   Bold,
   Code,
@@ -29,17 +29,18 @@ import {
   toggleInlineCodeCommand,
   toggleLinkCommand,
   toggleStrongCommand,
+  turnIntoTextCommand,
   updateLinkCommand,
   wrapInBulletListCommand,
   wrapInHeadingCommand,
   wrapInOrderedListCommand,
 } from "@milkdown/kit/preset/commonmark";
 import { redoDepth, undoDepth } from "@milkdown/kit/prose/history";
-import { EditorState } from "@milkdown/kit/prose/state";
+import { EditorState, Plugin } from "@milkdown/kit/prose/state";
 import { EditorView } from "@milkdown/kit/prose/view";
 import { history, redoCommand, undoCommand } from "@milkdown/kit/plugin/history";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
-import { callCommand, replaceAll } from "@milkdown/kit/utils";
+import { $prose, callCommand, replaceAll } from "@milkdown/kit/utils";
 import {
   Milkdown,
   MilkdownProvider,
@@ -82,6 +83,34 @@ const DEFAULT_TOOLBAR_STATE: ToolbarState = {
   canRedo: false,
 };
 
+const headingEnterPlugin = $prose(
+  () =>
+    new Plugin({
+      props: {
+        handleKeyDown(view, event) {
+          if (event.key !== "Enter" || !view.state.selection.empty) {
+            return false;
+          }
+
+          const { state, dispatch } = view;
+          const { $from } = state.selection;
+          const paragraph = state.schema.nodes.paragraph;
+
+          if ($from.parent.type.name !== "heading" || !paragraph) {
+            return false;
+          }
+
+          dispatch(
+            state.tr
+              .split($from.pos, 1, [{ type: paragraph }])
+              .scrollIntoView(),
+          );
+          return true;
+        },
+      },
+    }),
+);
+
 export function RichEditor({ value, onChange }: RichEditorProps) {
   const normalizedValue = normalizeMarkdownLineBreaks(value);
 
@@ -117,6 +146,7 @@ function RichEditorInner({ value, onChange }: RichEditorProps) {
               }
             });
         })
+        .use(headingEnterPlugin)
         .use(commonmark)
         .use(history)
         .use(listener),
@@ -175,6 +205,19 @@ function RichFormatToolbar({ toolbarState }: RichFormatToolbarProps) {
 
     const editor = getEditor();
     editor.action(callCommand(command.key, payload));
+  };
+
+  const handleToolbarMouseDown = (event: MouseEvent) => {
+    event.preventDefault();
+  };
+
+  const runHeading = (level: number) => {
+    if (toolbarState.headingLevel === level) {
+      run(turnIntoTextCommand);
+      return;
+    }
+
+    run(wrapInHeadingCommand, level);
   };
 
   const openLinkPanel = () => {
@@ -258,7 +301,8 @@ function RichFormatToolbar({ toolbarState }: RichFormatToolbarProps) {
         aria-pressed={toolbarState.headingLevel === 1}
         className={toolbarState.headingLevel === 1 ? "active" : ""}
         disabled={loading}
-        onClick={() => run(wrapInHeadingCommand, 1)}
+        onMouseDown={handleToolbarMouseDown}
+        onClick={() => runHeading(1)}
       >
         <Heading1 aria-hidden="true" size={18} />
       </button>
@@ -269,7 +313,8 @@ function RichFormatToolbar({ toolbarState }: RichFormatToolbarProps) {
         aria-pressed={toolbarState.headingLevel === 2}
         className={toolbarState.headingLevel === 2 ? "active" : ""}
         disabled={loading}
-        onClick={() => run(wrapInHeadingCommand, 2)}
+        onMouseDown={handleToolbarMouseDown}
+        onClick={() => runHeading(2)}
       >
         <Heading2 aria-hidden="true" size={18} />
       </button>
@@ -280,7 +325,8 @@ function RichFormatToolbar({ toolbarState }: RichFormatToolbarProps) {
         aria-pressed={toolbarState.headingLevel === 3}
         className={toolbarState.headingLevel === 3 ? "active" : ""}
         disabled={loading}
-        onClick={() => run(wrapInHeadingCommand, 3)}
+        onMouseDown={handleToolbarMouseDown}
+        onClick={() => runHeading(3)}
       >
         <Heading3 aria-hidden="true" size={18} />
       </button>

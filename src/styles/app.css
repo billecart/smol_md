@@ -13,7 +13,7 @@
   --highlight-background: rgba(0, 66, 37, 0.08);
   --font-ui: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-editor: "IBM Plex Mono", "Cascadia Mono", "Cascadia Code", "Roboto Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
-  --editor-line-height: 1.75;
+  --editor-line-height: 0.875;
   --editor-font-size: 16px;
   --editor-column-width: min(740px, calc(100vw - 80px));
 
@@ -424,19 +424,19 @@ input:focus-visible,
 }
 
 .rich-editor .ProseMirror h1 {
-  margin: 0 0 2.25rem;
+  margin: 0 0 1.125rem;
   font-size: 1.82rem;
   line-height: 1.28;
 }
 
 .rich-editor .ProseMirror h2 {
-  margin: 3rem 0 1.1rem;
+  margin: 3rem 0 0.55rem;
   font-size: 1.24rem;
   line-height: 1.38;
 }
 
 .rich-editor .ProseMirror h3 {
-  margin: 2.3rem 0 0.9rem;
+  margin: 2.3rem 0 0.45rem;
   font-size: 1.02rem;
   line-height: 1.45;
 }
