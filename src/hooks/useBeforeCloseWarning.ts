@@ -1,7 +1,15 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { confirm } from "@tauri-apps/plugin-dialog";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isRunningInTauri } from "../services/fileService";
 
 export function useBeforeCloseWarning(isDirty: boolean) {
+  const isDirtyRef = useRef(isDirty);
+
+  useEffect(() => {
+    isDirtyRef.current = isDirty;
+  }, [isDirty]);
+
   useEffect(() => {
     if (isRunningInTauri()) {
       return;
@@ -25,35 +33,31 @@ export function useBeforeCloseWarning(isDirty: boolean) {
       return;
     }
 
+    const appWindow = getCurrentWindow();
     let unlisten: (() => void) | undefined;
 
-    import("@tauri-apps/api/window")
-      .then(({ getCurrentWindow }) => {
-        const appWindow = getCurrentWindow();
+    appWindow
+      .onCloseRequested(async (event) => {
+        event.preventDefault();
 
-        return appWindow.onCloseRequested(async (event) => {
-          event.preventDefault();
+        if (!isDirtyRef.current) {
+          await appWindow.destroy();
+          return;
+        }
 
-          if (!isDirty) {
-            await appWindow.destroy();
-            return;
-          }
+        const shouldClose = await confirm(
+          "You have unsaved changes. Close without saving?",
+          {
+            title: "Unsaved changes",
+            kind: "warning",
+            okLabel: "Close without saving",
+            cancelLabel: "Keep editing",
+          },
+        );
 
-          const { confirm } = await import("@tauri-apps/plugin-dialog");
-          const shouldClose = await confirm(
-            "You have unsaved changes. Close without saving?",
-            {
-              title: "Unsaved changes",
-              kind: "warning",
-              okLabel: "Close without saving",
-              cancelLabel: "Keep editing",
-            },
-          );
-
-          if (shouldClose) {
-            await appWindow.destroy();
-          }
-        });
+        if (shouldClose) {
+          await appWindow.destroy();
+        }
       })
       .then((cleanup) => {
         unlisten = cleanup;
@@ -63,5 +67,5 @@ export function useBeforeCloseWarning(isDirty: boolean) {
     return () => {
       unlisten?.();
     };
-  }, [isDirty]);
+  }, []);
 }
