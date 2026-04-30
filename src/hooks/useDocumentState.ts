@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { OpenedMarkdownFile } from "../services/fileService";
+import { normalizeMarkdownLineBreaks } from "../utils/markdown";
 
 export type DocumentState = {
   filePath: string | null;
@@ -26,29 +27,32 @@ export function useDocumentState() {
     () => ({
       ...state,
       setMarkdown: (markdown: string) => {
+        const normalizedMarkdown = normalizeMarkdownLineBreaks(markdown);
         setState((current) => ({
           ...current,
-          markdown,
-          isDirty: markdown !== current.originalMarkdown,
+          markdown: normalizedMarkdown,
+          isDirty: normalizedMarkdown !== current.originalMarkdown,
         }));
       },
       loadDocument: (file: OpenedMarkdownFile) => {
+        const normalizedMarkdown = normalizeMarkdownLineBreaks(file.markdown);
         setState({
           filePath: file.filePath,
           fileName: file.fileName,
-          markdown: file.markdown,
-          originalMarkdown: file.markdown,
+          markdown: normalizedMarkdown,
+          originalMarkdown: normalizedMarkdown,
           isDirty: false,
           lastSavedAt: null,
         });
       },
       markSaved: (markdown: string, filePath: string | null, fileName?: string) => {
+        const normalizedMarkdown = normalizeMarkdownLineBreaks(markdown);
         setState((current) => ({
           ...current,
           filePath,
           fileName: fileName ?? current.fileName,
-          markdown,
-          originalMarkdown: markdown,
+          markdown: normalizedMarkdown,
+          originalMarkdown: normalizedMarkdown,
           isDirty: false,
           lastSavedAt: new Date(),
         }));
@@ -67,4 +71,3 @@ export function useDocumentState() {
     [state],
   );
 }
-
