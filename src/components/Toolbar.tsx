@@ -1,10 +1,9 @@
-import {
-  FilePlus2,
-  FolderOpen,
-  Save,
-  SaveAll,
-} from "lucide-react";
 import type { ReactNode } from "react";
+import duplicateIcon from "../assets/icons/duplicate.svg";
+import newIcon from "../assets/icons/new.svg";
+import openIcon from "../assets/icons/open.svg";
+import saveIcon from "../assets/icons/save.svg";
+import smolLogo from "../assets/icons/smol.svg";
 
 type EditorMode = "rich" | "source";
 
@@ -32,8 +31,7 @@ export function Toolbar({
   return (
     <header className="toolbar">
       <div className="brand">
-        <span className="brand-mark">s</span>
-        <span>smol_md</span>
+        <img className="brand-logo" src={smolLogo} alt="smol" />
       </div>
 
       {tabs}
@@ -60,11 +58,21 @@ export function Toolbar({
 
         <nav className="toolbar-actions" aria-label="File actions">
           <button type="button" onClick={onNew} title="New document">
-            <FilePlus2 aria-hidden="true" size={18} />
+            <img
+              className="toolbar-icon"
+              src={newIcon}
+              alt=""
+              aria-hidden="true"
+            />
             <span>New</span>
           </button>
           <button type="button" onClick={onOpen} title="Open Markdown file">
-            <FolderOpen aria-hidden="true" size={18} />
+            <img
+              className="toolbar-icon"
+              src={openIcon}
+              alt=""
+              aria-hidden="true"
+            />
             <span>Open</span>
           </button>
           <button
@@ -73,11 +81,21 @@ export function Toolbar({
             title="Save"
             disabled={!canSave}
           >
-            <Save aria-hidden="true" size={18} />
+            <img
+              className="toolbar-icon"
+              src={saveIcon}
+              alt=""
+              aria-hidden="true"
+            />
             <span>Save</span>
           </button>
           <button type="button" onClick={onSaveAs} title="Save As">
-            <SaveAll aria-hidden="true" size={18} />
+            <img
+              className="toolbar-icon"
+              src={duplicateIcon}
+              alt=""
+              aria-hidden="true"
+            />
             <span>Save As</span>
           </button>
         </nav>

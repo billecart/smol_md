@@ -125,22 +125,14 @@ input:focus-visible {
   justify-self: start;
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  min-width: max-content;
-  font-family: var(--font-editor);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0;
+  width: 46px;
+  min-width: 46px;
 }
 
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: 23px;
-  height: 23px;
-  border-radius: 50%;
-  background: rgba(0, 66, 37, 0.11);
-  color: var(--color-accent);
+.brand-logo {
+  display: block;
+  width: 46px;
+  height: auto;
 }
 
 .top-tabs {
@@ -246,6 +238,13 @@ input:focus-visible {
 .toolbar-actions button:not(:disabled):focus-visible {
   background: rgba(22, 22, 14, 0.055);
   color: var(--text-normal);
+}
+
+.toolbar-icon {
+  display: block;
+  width: 19px;
+  height: 19px;
+  object-fit: contain;
 }
 
 .toolbar-actions button span {
