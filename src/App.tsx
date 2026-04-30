@@ -152,45 +152,19 @@ function App() {
   return (
     <main className="app-shell">
       <Toolbar
+        fileName={fileName}
         isDirty={isDirty}
         canSave={markdown !== originalMarkdown || Boolean(filePath)}
+        editorMode={editorMode}
         onNew={handleNew}
         onOpen={handleOpen}
         onSave={handleSave}
         onSaveAs={handleSaveAs}
+        onEditorModeChange={handleEditorModeChange}
       />
 
       <section className="document-frame" aria-label="Markdown editor">
         <div className="editor-column">
-          <header className="document-header">
-            <p className="file-kicker">
-              <span
-                className={isDirty ? "dirty-dot" : "saved-dot"}
-                aria-hidden="true"
-              />
-              <span>{fileName}</span>
-            </p>
-
-            <div className="mode-switch" aria-label="Editor mode">
-              <button
-                type="button"
-                className={editorMode === "rich" ? "active" : ""}
-                aria-pressed={editorMode === "rich"}
-                onClick={() => handleEditorModeChange("rich")}
-              >
-                Rich
-              </button>
-              <button
-                type="button"
-                className={editorMode === "source" ? "active" : ""}
-                aria-pressed={editorMode === "source"}
-                onClick={() => handleEditorModeChange("source")}
-              >
-                Source
-              </button>
-            </div>
-          </header>
-
           {!isDesktopApp ? (
             <p className="preview-note">
               Browser preview: Save As downloads a Markdown file. The real Windows save dialog works in the desktop app.
