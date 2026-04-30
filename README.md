@@ -1,6 +1,8 @@
 # smol_md
 
-smol_md is a tiny Windows Markdown editor. It opens one Markdown file, lets you edit it visually or as plain Markdown text, and saves it back to disk.
+smol_md is a smol Windows markdown editor that allows you to edit in rich text (if you like clean minimal pages, like me). It opens markdown files, lets you edit it visually or as plain Markdown text, save it. 
+
+This is my overnight vibecoding project (not a real coder here). Polishing is in progress. 
 
 This is Milestone 2 from the design doc. The rich editor is powered by Milkdown, while Markdown remains the app's shared document format.
 
