@@ -4,14 +4,14 @@ import {
   Save,
   SaveAll,
 } from "lucide-react";
+import type { ReactNode } from "react";
 
 type EditorMode = "rich" | "source";
 
 type ToolbarProps = {
-  fileName: string;
-  isDirty: boolean;
   canSave: boolean;
   editorMode: EditorMode;
+  tabs: ReactNode;
   onNew: () => void;
   onOpen: () => void;
   onSave: () => void;
@@ -20,10 +20,9 @@ type ToolbarProps = {
 };
 
 export function Toolbar({
-  fileName,
-  isDirty,
   canSave,
   editorMode,
+  tabs,
   onNew,
   onOpen,
   onSave,
@@ -37,13 +36,7 @@ export function Toolbar({
         <span>smol_md</span>
       </div>
 
-      <p className="toolbar-document-title">
-        <span
-          className={isDirty ? "dirty-dot" : "saved-dot"}
-          aria-hidden="true"
-        />
-        <span>{fileName}</span>
-      </p>
+      {tabs}
 
       <div className="toolbar-controls">
         <div className="mode-switch" aria-label="Editor mode">
@@ -78,7 +71,7 @@ export function Toolbar({
             type="button"
             onClick={onSave}
             title="Save"
-            disabled={!canSave && !isDirty}
+            disabled={!canSave}
           >
             <Save aria-hidden="true" size={18} />
             <span>Save</span>
