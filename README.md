@@ -1,14 +1,16 @@
 # smol_md
 
-smol_md is a tiny Windows Markdown editor. The first version opens one Markdown file, edits it as plain Markdown text, and saves it back to disk.
+smol_md is a tiny Windows Markdown editor. It opens one Markdown file, lets you edit it visually or as plain Markdown text, and saves it back to disk.
 
-This is Milestone 1 from the design doc. The richer visual editor comes later.
+This is Milestone 2 from the design doc. The rich editor is powered by Milkdown, while Markdown remains the app's shared document format.
 
 ## What works now
 
 - New empty document
 - Open `.md` and `.markdown` files
 - Edit Markdown in a quiet writing area
+- Switch between Rich and Source modes without losing content
+- Use a small formatting toolbar for headings, bold, italic, lists, links, inline code, and code blocks
 - Save back to the same file
 - Save As a new Markdown file
 - Warn before discarding unsaved changes
@@ -21,11 +23,9 @@ This is Milestone 1 from the design doc. The richer visual editor comes later.
 
 ## What is not here yet
 
-- Rich visual editing
-- Formatting toolbar
 - Dark mode
 - Tables
-- Packaging into an installer
+- Advanced link editing
 
 ## Setup
 
@@ -98,4 +98,4 @@ If a backup already exists, smol_md creates a timestamped backup instead.
 
 ## Known limitation
 
-This first version is a plain Markdown source editor. It is intentionally simple so file open/save behavior can be tested before adding a rich editor.
+Rich mode covers the common Markdown writing tools first. Source mode is still available when you want to edit the exact Markdown text.

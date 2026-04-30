@@ -115,6 +115,37 @@ button:not(:disabled):hover {
   margin: 0 auto 18px;
 }
 
+.document-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mode-toggle {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+  border: 1px solid #d8d6cf;
+  border-radius: 7px;
+  background: #f1efe8;
+}
+
+.mode-toggle button {
+  min-width: 68px;
+  min-height: 30px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #5f5b52;
+  font-size: 13px;
+}
+
+.mode-toggle button.active {
+  background: #ffffff;
+  color: #222326;
+  box-shadow: 0 1px 4px rgba(45, 45, 40, 0.1);
+}
+
 .eyebrow {
   margin: 0 0 6px;
   color: #706b62;
@@ -160,19 +191,23 @@ h1 {
   line-height: 1.45;
 }
 
-.source-editor {
+.source-editor,
+.rich-editor-shell {
   display: block;
   width: min(100%, 760px);
   min-height: calc(100vh - 238px);
   margin: 0 auto;
-  padding: 28px;
   border: 1px solid #ddd9cf;
   border-radius: 8px;
   outline: none;
-  resize: vertical;
   background: #fffefd;
   color: #222326;
   box-shadow: 0 18px 45px rgba(45, 45, 40, 0.08);
+}
+
+.source-editor {
+  padding: 28px;
+  resize: vertical;
   font-family:
     "Segoe UI",
     system-ui,
@@ -181,11 +216,140 @@ h1 {
   line-height: 1.7;
 }
 
-.source-editor:focus {
+.source-editor:focus,
+.rich-editor-shell:focus-within {
   border-color: #8a8273;
   box-shadow:
     0 0 0 3px rgba(138, 130, 115, 0.14),
     0 18px 45px rgba(45, 45, 40, 0.08);
+}
+
+.rich-editor-shell {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.format-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  min-height: 44px;
+  padding: 7px 9px;
+  border-bottom: 1px solid #e5e1d8;
+  background: #fbfaf7;
+}
+
+.format-toolbar button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 30px;
+  padding: 0;
+  border-radius: 5px;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 22px;
+  margin: 0 3px;
+  background: #ded9ce;
+}
+
+.rich-editor {
+  flex: 1;
+  min-height: 0;
+}
+
+.editor-loading {
+  margin: 28px;
+  color: #706b62;
+  font-size: 14px;
+}
+
+.rich-editor .milkdown {
+  min-height: 100%;
+}
+
+.rich-editor .ProseMirror {
+  min-height: calc(100vh - 284px);
+  padding: 28px;
+  outline: none;
+  color: #222326;
+  font-family:
+    "Segoe UI",
+    system-ui,
+    sans-serif;
+  font-size: 17px;
+  line-height: 1.7;
+}
+
+.rich-editor .ProseMirror > *:first-child {
+  margin-top: 0;
+}
+
+.rich-editor .ProseMirror > *:last-child {
+  margin-bottom: 0;
+}
+
+.rich-editor .ProseMirror p {
+  margin: 0 0 16px;
+}
+
+.rich-editor .ProseMirror h1,
+.rich-editor .ProseMirror h2,
+.rich-editor .ProseMirror h3 {
+  margin: 26px 0 12px;
+  color: #20211f;
+  line-height: 1.25;
+}
+
+.rich-editor .ProseMirror h1 {
+  font-size: 29px;
+}
+
+.rich-editor .ProseMirror h2 {
+  font-size: 23px;
+}
+
+.rich-editor .ProseMirror h3 {
+  font-size: 19px;
+}
+
+.rich-editor .ProseMirror ul,
+.rich-editor .ProseMirror ol {
+  margin: 0 0 16px;
+  padding-left: 26px;
+}
+
+.rich-editor .ProseMirror code {
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #f0eee7;
+  font-family:
+    Consolas,
+    "Cascadia Mono",
+    monospace;
+  font-size: 0.88em;
+}
+
+.rich-editor .ProseMirror pre {
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  overflow: auto;
+  border: 1px solid #e0dbd0;
+  border-radius: 6px;
+  background: #f5f3ec;
+}
+
+.rich-editor .ProseMirror pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.rich-editor .ProseMirror a {
+  color: #315f77;
 }
 
 .status-bar {
@@ -228,10 +392,24 @@ h1 {
     gap: 12px;
   }
 
-  .source-editor {
+  .document-controls {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .source-editor,
+  .rich-editor-shell {
     min-height: calc(100vh - 298px);
+  }
+
+  .source-editor,
+  .rich-editor .ProseMirror {
     padding: 20px;
     font-size: 16px;
+  }
+
+  .rich-editor .ProseMirror {
+    min-height: calc(100vh - 342px);
   }
 
   .status-bar {
