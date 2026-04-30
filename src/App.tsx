@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { RichEditor } from "./components/RichEditor";
 import { SourceEditor } from "./components/SourceEditor";
 import { StatusBar } from "./components/StatusBar";
@@ -130,11 +130,23 @@ function App() {
     setEditorMode(mode);
   };
 
+  const toggleEditorMode = useCallback(() => {
+    setEditorMode((currentMode) => {
+      if (currentMode === "rich") {
+        setMarkdown(markdown);
+        return "source";
+      }
+
+      return "rich";
+    });
+  }, [markdown, setMarkdown]);
+
   useKeyboardShortcuts({
     onNew: handleNew,
     onOpen: handleOpen,
     onSave: handleSave,
     onSaveAs: handleSaveAs,
+    onToggleSourceMode: toggleEditorMode,
   });
 
   return (
@@ -149,15 +161,17 @@ function App() {
       />
 
       <section className="document-frame" aria-label="Markdown editor">
-        <header className="document-header">
-          <div>
-            <p className="eyebrow">
-              {editorMode === "rich" ? "Rich Markdown" : "Markdown Source"}
+        <div className="editor-column">
+          <header className="document-header">
+            <p className="file-kicker">
+              <span
+                className={isDirty ? "dirty-dot" : "saved-dot"}
+                aria-hidden="true"
+              />
+              <span>{fileName}</span>
             </p>
-            <h1>{fileName}</h1>
-          </div>
-          <div className="document-controls">
-            <div className="mode-toggle" aria-label="Editor mode">
+
+            <div className="mode-switch" aria-label="Editor mode">
               <button
                 type="button"
                 className={editorMode === "rich" ? "active" : ""}
@@ -175,23 +189,20 @@ function App() {
                 Source
               </button>
             </div>
-            <span className={isDirty ? "state-pill dirty" : "state-pill"}>
-              {isDirty ? "Unsaved" : "Saved"}
-            </span>
-          </div>
-        </header>
+          </header>
 
-        {!isDesktopApp ? (
-          <p className="preview-note">
-            Browser preview: Save As downloads a Markdown file. The real Windows save dialog works in the desktop app.
-          </p>
-        ) : null}
+          {!isDesktopApp ? (
+            <p className="preview-note">
+              Browser preview: Save As downloads a Markdown file. The real Windows save dialog works in the desktop app.
+            </p>
+          ) : null}
 
-        {editorMode === "rich" ? (
-          <RichEditor value={markdown} onChange={setMarkdown} />
-        ) : (
-          <SourceEditor value={markdown} onChange={setMarkdown} />
-        )}
+          {editorMode === "rich" ? (
+            <RichEditor value={markdown} onChange={setMarkdown} />
+          ) : (
+            <SourceEditor value={markdown} onChange={setMarkdown} />
+          )}
+        </div>
       </section>
 
       <StatusBar

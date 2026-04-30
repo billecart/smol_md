@@ -5,6 +5,7 @@ type KeyboardShortcuts = {
   onOpen: () => void;
   onSave: () => void;
   onSaveAs: () => void;
+  onToggleSourceMode?: () => void;
 };
 
 export function useKeyboardShortcuts({
@@ -12,6 +13,7 @@ export function useKeyboardShortcuts({
   onOpen,
   onSave,
   onSaveAs,
+  onToggleSourceMode,
 }: KeyboardShortcuts) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -38,10 +40,14 @@ export function useKeyboardShortcuts({
         event.preventDefault();
         onSave();
       }
+
+      if (key === "`") {
+        event.preventDefault();
+        onToggleSourceMode?.();
+      }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onNew, onOpen, onSave, onSaveAs]);
+  }, [onNew, onOpen, onSave, onSaveAs, onToggleSourceMode]);
 }
-
