@@ -122,6 +122,14 @@ function App() {
     }
   };
 
+  const handleEditorModeChange = (mode: EditorMode) => {
+    if (mode === "source") {
+      setMarkdown(markdown);
+    }
+
+    setEditorMode(mode);
+  };
+
   useKeyboardShortcuts({
     onNew: handleNew,
     onOpen: handleOpen,
@@ -154,7 +162,7 @@ function App() {
                 type="button"
                 className={editorMode === "rich" ? "active" : ""}
                 aria-pressed={editorMode === "rich"}
-                onClick={() => setEditorMode("rich")}
+                onClick={() => handleEditorModeChange("rich")}
               >
                 Rich
               </button>
@@ -162,7 +170,7 @@ function App() {
                 type="button"
                 className={editorMode === "source" ? "active" : ""}
                 aria-pressed={editorMode === "source"}
-                onClick={() => setEditorMode("source")}
+                onClick={() => handleEditorModeChange("source")}
               >
                 Source
               </button>
