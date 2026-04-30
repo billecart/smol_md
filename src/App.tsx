@@ -3,9 +3,11 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import { RichEditor } from "./components/RichEditor";
 import { SourceEditor } from "./components/SourceEditor";
 import { StatusBar } from "./components/StatusBar";
+import { TopTabs } from "./components/TopTabs";
 import { Toolbar } from "./components/Toolbar";
 import { useBeforeCloseWarning } from "./hooks/useBeforeCloseWarning";
 import { useDocumentState } from "./hooks/useDocumentState";
+import type { OpenDocument } from "./hooks/useDocumentState";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import {
   isRunningInTauri,
@@ -25,10 +27,15 @@ function App() {
     originalMarkdown,
     isDirty,
     lastSavedAt,
+    documents,
+    activeDocumentId,
+    hasDirtyDocuments,
+    setActiveDocumentId,
     setMarkdown,
     loadDocument,
     markSaved,
-    resetDocument,
+    createNewDocument,
+    closeDocument,
   } = documentState;
   const [message, setMessage] = useState("Ready");
   const [editorMode, setEditorMode] = useState<EditorMode>("rich");
@@ -43,20 +50,22 @@ function App() {
     document.title = title;
   }, [title]);
 
-  useBeforeCloseWarning(isDirty);
+  useBeforeCloseWarning(hasDirtyDocuments);
 
-  const confirmDiscard = async () => {
-    if (!isDirty) {
+  const confirmDiscard = async (
+    targetDocument: Pick<OpenDocument, "fileName" | "isDirty"> = documentState,
+  ) => {
+    if (!targetDocument.isDirty) {
       return true;
     }
 
     if (!isDesktopApp) {
       return window.confirm(
-        "You have unsaved changes. Do you want to discard them?",
+        `${targetDocument.fileName} has unsaved changes. Do you want to discard them?`,
       );
     }
 
-    return confirm("You have unsaved changes. Discard them?", {
+    return confirm(`${targetDocument.fileName} has unsaved changes. Discard them?`, {
       title: "Unsaved changes",
       kind: "warning",
       okLabel: "Discard changes",
@@ -65,19 +74,11 @@ function App() {
   };
 
   const handleNew = async () => {
-    if (!(await confirmDiscard())) {
-      return;
-    }
-
-    resetDocument();
+    createNewDocument();
     setMessage("New empty document");
   };
 
   const handleOpen = async () => {
-    if (!(await confirmDiscard())) {
-      return;
-    }
-
     try {
       const opened = await openMarkdownFile();
 
@@ -132,6 +133,21 @@ function App() {
     }
   };
 
+  const handleCloseDocument = async (documentId: string) => {
+    const document = documents.find((item) => item.id === documentId);
+
+    if (!document) {
+      return;
+    }
+
+    if (!(await confirmDiscard(document))) {
+      return;
+    }
+
+    closeDocument(documentId);
+    setMessage(`Closed ${document.fileName}`);
+  };
+
   const handleEditorModeChange = (mode: EditorMode) => {
     if (mode === "source") {
       setMarkdown(markdown);
@@ -162,12 +178,22 @@ function App() {
   return (
     <main className="app-shell">
       <div className="top-chrome-hitbox" aria-hidden="true" />
-      <div className="top-chrome">
+      <div
+        className={
+          documents.length > 1 ? "top-chrome top-chrome-visible" : "top-chrome"
+        }
+      >
         <Toolbar
-          fileName={fileName}
-          isDirty={isDirty}
           canSave={markdown !== originalMarkdown || Boolean(filePath)}
           editorMode={editorMode}
+          tabs={
+            <TopTabs
+              documents={documents}
+              activeDocumentId={activeDocumentId}
+              onSelectDocument={setActiveDocumentId}
+              onCloseDocument={handleCloseDocument}
+            />
+          }
           onNew={handleNew}
           onOpen={handleOpen}
           onSave={handleSave}
@@ -185,9 +211,17 @@ function App() {
           ) : null}
 
           {editorMode === "rich" ? (
-            <RichEditor value={markdown} onChange={setMarkdown} />
+            <RichEditor
+              key={activeDocumentId}
+              value={markdown}
+              onChange={setMarkdown}
+            />
           ) : (
-            <SourceEditor value={markdown} onChange={setMarkdown} />
+            <SourceEditor
+              key={activeDocumentId}
+              value={markdown}
+              onChange={setMarkdown}
+            />
           )}
         </div>
       </section>

@@ -94,6 +94,7 @@ input:focus-visible {
 }
 
 .top-chrome-hitbox:hover + .top-chrome,
+.top-chrome-visible,
 .top-chrome:hover,
 .top-chrome:focus-within {
   opacity: 1;
@@ -142,14 +143,32 @@ input:focus-visible {
   color: var(--color-accent);
 }
 
-.toolbar-document-title {
+.top-tabs {
   justify-self: center;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  gap: 4px;
   min-width: 0;
-  max-width: min(42vw, 520px);
-  margin: 0;
+  max-width: min(48vw, 620px);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.top-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  display: inline-flex;
+  flex: 0 1 220px;
+  align-items: center;
+  gap: 2px;
+  min-width: 84px;
+  max-width: 220px;
+  min-height: 30px;
+  padding: 0 3px 0 8px;
+  border-radius: 8px;
   color: var(--text-muted);
   font-family: var(--font-editor);
   font-size: 12px;
@@ -157,10 +176,47 @@ input:focus-visible {
   letter-spacing: 0;
 }
 
-.toolbar-document-title span:last-child {
+.tab.active {
+  background: rgba(22, 22, 14, 0.045);
+  color: var(--text-normal);
+}
+
+.tab:hover,
+.tab:focus-within {
+  background: rgba(22, 22, 14, 0.055);
+  color: var(--text-normal);
+}
+
+.tab-label {
+  display: inline-flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 5px 0;
+  color: inherit;
+}
+
+.tab-label span:last-child {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tab-close {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  color: var(--text-faint);
+}
+
+.tab-close:hover,
+.tab-close:focus-visible {
+  background: rgba(22, 22, 14, 0.07);
+  color: var(--text-normal);
 }
 
 .toolbar-controls {
@@ -531,12 +587,15 @@ input:focus-visible {
     display: none;
   }
 
-  .toolbar-document-title {
+  .top-tabs {
     justify-self: start;
+    justify-content: flex-start;
     max-width: 100%;
+    order: 1;
   }
 
   .toolbar-controls {
+    order: 2;
     gap: 12px;
   }
 
