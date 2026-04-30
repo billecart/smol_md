@@ -10,6 +10,8 @@
     "tauri": "tauri"
   },
   "dependencies": {
+    "@milkdown/kit": "^7.20.0",
+    "@milkdown/react": "^7.20.0",
     "@tauri-apps/api": "^2.5.0",
     "@tauri-apps/plugin-dialog": "^2.2.1",
     "lucide-react": "^0.468.0",
@@ -25,4 +27,3 @@
     "vite": "^6.0.5"
   }
 }
-

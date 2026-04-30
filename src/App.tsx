@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { RichEditor } from "./components/RichEditor";
 import { SourceEditor } from "./components/SourceEditor";
 import { StatusBar } from "./components/StatusBar";
 import { Toolbar } from "./components/Toolbar";
@@ -11,6 +12,8 @@ import {
   saveMarkdownFile,
   saveMarkdownFileAs,
 } from "./services/fileService";
+
+type EditorMode = "rich" | "source";
 
 function App() {
   const documentState = useDocumentState();
@@ -27,6 +30,7 @@ function App() {
     resetDocument,
   } = documentState;
   const [message, setMessage] = useState("Ready");
+  const [editorMode, setEditorMode] = useState<EditorMode>("rich");
   const isDesktopApp = isRunningInTauri();
 
   const title = useMemo(() => {
@@ -139,12 +143,34 @@ function App() {
       <section className="document-frame" aria-label="Markdown editor">
         <header className="document-header">
           <div>
-            <p className="eyebrow">Markdown Source</p>
+            <p className="eyebrow">
+              {editorMode === "rich" ? "Rich Markdown" : "Markdown Source"}
+            </p>
             <h1>{fileName}</h1>
           </div>
-          <span className={isDirty ? "state-pill dirty" : "state-pill"}>
-            {isDirty ? "Unsaved" : "Saved"}
-          </span>
+          <div className="document-controls">
+            <div className="mode-toggle" aria-label="Editor mode">
+              <button
+                type="button"
+                className={editorMode === "rich" ? "active" : ""}
+                aria-pressed={editorMode === "rich"}
+                onClick={() => setEditorMode("rich")}
+              >
+                Rich
+              </button>
+              <button
+                type="button"
+                className={editorMode === "source" ? "active" : ""}
+                aria-pressed={editorMode === "source"}
+                onClick={() => setEditorMode("source")}
+              >
+                Source
+              </button>
+            </div>
+            <span className={isDirty ? "state-pill dirty" : "state-pill"}>
+              {isDirty ? "Unsaved" : "Saved"}
+            </span>
+          </div>
         </header>
 
         {!isDesktopApp ? (
@@ -153,7 +179,11 @@ function App() {
           </p>
         ) : null}
 
-        <SourceEditor value={markdown} onChange={setMarkdown} />
+        {editorMode === "rich" ? (
+          <RichEditor value={markdown} onChange={setMarkdown} />
+        ) : (
+          <SourceEditor value={markdown} onChange={setMarkdown} />
+        )}
       </section>
 
       <StatusBar
