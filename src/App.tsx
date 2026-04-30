@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { RichEditor } from "./components/RichEditor";
 import { SourceEditor } from "./components/SourceEditor";
 import { StatusBar } from "./components/StatusBar";
@@ -44,18 +45,27 @@ function App() {
 
   useBeforeCloseWarning(isDirty);
 
-  const confirmDiscard = () => {
+  const confirmDiscard = async () => {
     if (!isDirty) {
       return true;
     }
 
-    return window.confirm(
-      "You have unsaved changes. Do you want to discard them?",
-    );
+    if (!isDesktopApp) {
+      return window.confirm(
+        "You have unsaved changes. Do you want to discard them?",
+      );
+    }
+
+    return confirm("You have unsaved changes. Discard them?", {
+      title: "Unsaved changes",
+      kind: "warning",
+      okLabel: "Discard changes",
+      cancelLabel: "Keep editing",
+    });
   };
 
-  const handleNew = () => {
-    if (!confirmDiscard()) {
+  const handleNew = async () => {
+    if (!(await confirmDiscard())) {
       return;
     }
 
@@ -64,7 +74,7 @@ function App() {
   };
 
   const handleOpen = async () => {
-    if (!confirmDiscard()) {
+    if (!(await confirmDiscard())) {
       return;
     }
 
@@ -151,17 +161,20 @@ function App() {
 
   return (
     <main className="app-shell">
-      <Toolbar
-        fileName={fileName}
-        isDirty={isDirty}
-        canSave={markdown !== originalMarkdown || Boolean(filePath)}
-        editorMode={editorMode}
-        onNew={handleNew}
-        onOpen={handleOpen}
-        onSave={handleSave}
-        onSaveAs={handleSaveAs}
-        onEditorModeChange={handleEditorModeChange}
-      />
+      <div className="top-chrome-hitbox" aria-hidden="true" />
+      <div className="top-chrome">
+        <Toolbar
+          fileName={fileName}
+          isDirty={isDirty}
+          canSave={markdown !== originalMarkdown || Boolean(filePath)}
+          editorMode={editorMode}
+          onNew={handleNew}
+          onOpen={handleOpen}
+          onSave={handleSave}
+          onSaveAs={handleSaveAs}
+          onEditorModeChange={handleEditorModeChange}
+        />
+      </div>
 
       <section className="document-frame" aria-label="Markdown editor">
         <div className="editor-column">

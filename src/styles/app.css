@@ -16,6 +16,7 @@
   --editor-line-height: 1.75;
   --editor-font-size: 16px;
   --editor-column-width: min(740px, calc(100vw - 80px));
+  --toolbar-peek-height: 14px;
 
   color: var(--text-normal);
   background: var(--background-primary);
@@ -69,12 +70,37 @@ input:focus-visible {
   background: var(--background-primary);
 }
 
-.toolbar {
+.top-chrome-hitbox {
+  position: fixed;
+  z-index: 21;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: var(--toolbar-peek-height);
+  background: rgba(243, 243, 242, 0.001);
+}
+
+.top-chrome {
   position: fixed;
   z-index: 20;
   top: 0;
   left: 0;
   right: 0;
+  opacity: 0;
+  transform: translateY(-100%);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.top-chrome-hitbox:hover + .top-chrome,
+.top-chrome:hover,
+.top-chrome:focus-within {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toolbar {
   display: grid;
   grid-template-columns: minmax(88px, 1fr) minmax(0, auto) minmax(230px, 1fr);
   align-items: center;
@@ -92,16 +118,6 @@ input:focus-visible {
 .toolbar:focus-within {
   border-color: var(--border-subtle);
   color: var(--text-normal);
-}
-
-.toolbar::before {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 18px;
-  content: "";
-  transform: translateY(48px);
 }
 
 .brand {
