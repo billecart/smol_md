@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap");
+
 :root {
   --background-primary: #f3f3f2;
   --background-secondary: #ececea;
@@ -507,26 +509,28 @@ input:focus-visible {
 .rich-editor .ProseMirror h2,
 .rich-editor .ProseMirror h3 {
   font-weight: 600;
-  letter-spacing: 0;
   color: var(--text-normal);
 }
 
 .rich-editor .ProseMirror h1 {
-  margin: 0 0 1.125rem;
+  margin: 0 0 1.25rem;
   font-size: 1.82rem;
   line-height: 1.28;
+  letter-spacing: -0.025em;
 }
 
 .rich-editor .ProseMirror h2 {
-  margin: 3rem 0 0.55rem;
-  font-size: 1.24rem;
-  line-height: 1.38;
+  margin: 2.6rem 0 0.7rem;
+  font-size: 1.32rem;
+  line-height: 1.36;
+  letter-spacing: -0.018em;
 }
 
 .rich-editor .ProseMirror h3 {
-  margin: 2.3rem 0 0.45rem;
-  font-size: 1.02rem;
+  margin: 2rem 0 0.5rem;
+  font-size: 0.98rem;
   line-height: 1.45;
+  letter-spacing: -0.004em;
 }
 
 .rich-editor .ProseMirror ul,
@@ -550,30 +554,49 @@ input:focus-visible {
 .rich-editor .ProseMirror blockquote {
   margin: 1.8em 0;
   padding-left: 1.2em;
-  border-left: 2px solid rgba(0, 66, 37, 0.24);
-  color: var(--text-muted);
+  border-left: 2px solid rgba(0, 66, 37, 0.55);
+  color: rgba(22, 22, 14, 0.62);
+  font-style: normal;
 }
 
-.rich-editor .ProseMirror code {
+.rich-editor .ProseMirror blockquote p:first-child {
+  margin-top: 0;
+}
+
+.rich-editor .ProseMirror blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+.rich-editor .ProseMirror :not(pre) > code {
   padding: 0.08em 0.28em;
   border-radius: 5px;
   background: rgba(22, 22, 14, 0.045);
   font-family: var(--font-editor);
-  font-size: 0.94em;
+  font-size: 1em;
+}
+
+.rich-editor .ProseMirror mark {
+  padding: 0.05em 0.22em;
+  border-radius: 4px;
+  background: rgba(0, 66, 37, 0.1);
+  color: inherit;
 }
 
 .rich-editor .ProseMirror pre {
-  margin: 1.8em 0;
-  padding: 15px 17px;
-  overflow-x: auto;
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  margin: 1.6em 0;
+  padding: 14px 16px;
+  border: none;
+  border-radius: 10px;
   background: rgba(22, 22, 14, 0.045);
+  overflow-x: auto;
 }
 
 .rich-editor .ProseMirror pre code {
   padding: 0;
-  background: transparent;
+  border-radius: 0;
+  background: none;
+  font-size: 0.94em;
+  line-height: 1.6;
 }
 
 .rich-editor .ProseMirror hr {
