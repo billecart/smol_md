@@ -1,47 +1,16 @@
 import { useMemo, useState } from "react";
 import { OpenedMarkdownFile } from "../services/fileService";
-import { normalizeMarkdownLineBreaks } from "../utils/markdown";
+import {
+  createDocument,
+  createLoadedDocument,
+  findExistingDocumentByPath,
+  markDocumentSaved,
+  setDocumentMarkdown,
+  shouldReplaceInitialDraft,
+  type OpenDocument,
+} from "../utils/documentModel";
 
-export type OpenDocument = {
-  id: string;
-  filePath: string | null;
-  fileName: string;
-  markdown: string;
-  originalMarkdown: string;
-  isDirty: boolean;
-  lastSavedAt: Date | null;
-};
-
-const EMPTY_MARKDOWN = "# Untitled\n\n";
-
-function createDocument(
-  overrides: Partial<Omit<OpenDocument, "id">> = {},
-): OpenDocument {
-  const markdown = normalizeMarkdownLineBreaks(
-    overrides.markdown ?? EMPTY_MARKDOWN,
-  );
-  const originalMarkdown = normalizeMarkdownLineBreaks(
-    overrides.originalMarkdown ?? markdown,
-  );
-
-  return {
-    id: createDocumentId(),
-    filePath: overrides.filePath ?? null,
-    fileName: overrides.fileName ?? "Untitled.md",
-    markdown,
-    originalMarkdown,
-    isDirty: overrides.isDirty ?? markdown !== originalMarkdown,
-    lastSavedAt: overrides.lastSavedAt ?? null,
-  };
-}
-
-function createDocumentId() {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-
-  return `doc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
+export type { OpenDocument };
 
 export function useDocumentState() {
   const [documents, setDocuments] = useState<OpenDocument[]>(() => [
@@ -73,37 +42,26 @@ export function useDocumentState() {
       hasDirtyDocuments: documents.some((document) => document.isDirty),
       setActiveDocumentId,
       setMarkdown: (markdown: string) => {
-        const normalizedMarkdown = normalizeMarkdownLineBreaks(markdown);
-        updateActiveDocument((document) => ({
-          ...document,
-          markdown: normalizedMarkdown,
-          isDirty: normalizedMarkdown !== document.originalMarkdown,
-        }));
+        updateActiveDocument((document) =>
+          setDocumentMarkdown(document, markdown),
+        );
       },
       loadDocument: (file: OpenedMarkdownFile) => {
-        const normalizedMarkdown = normalizeMarkdownLineBreaks(file.markdown);
-        const existingDocument = file.filePath
-          ? documents.find((document) => document.filePath === file.filePath)
-          : null;
+        const existingDocument = findExistingDocumentByPath(
+          documents,
+          file.filePath,
+        );
 
         if (existingDocument) {
           setActiveDocumentId(existingDocument.id);
           return;
         }
 
-        const shouldReplaceActive =
-          documents.length === 1 &&
-          !activeDocument.filePath &&
-          !activeDocument.isDirty &&
-          activeDocument.markdown === EMPTY_MARKDOWN;
-
-        const loadedDocument = createDocument({
-          filePath: file.filePath,
-          fileName: file.fileName,
-          markdown: normalizedMarkdown,
-          originalMarkdown: normalizedMarkdown,
-          isDirty: false,
-        });
+        const shouldReplaceActive = shouldReplaceInitialDraft(
+          documents,
+          activeDocument,
+        );
+        const loadedDocument = createLoadedDocument(file);
 
         setDocuments((currentDocuments) => {
           if (shouldReplaceActive) {
@@ -121,16 +79,9 @@ export function useDocumentState() {
         filePath: string | null,
         fileName?: string,
       ) => {
-        const normalizedMarkdown = normalizeMarkdownLineBreaks(markdown);
-        updateActiveDocument((document) => ({
-          ...document,
-          filePath,
-          fileName: fileName ?? document.fileName,
-          markdown: normalizedMarkdown,
-          originalMarkdown: normalizedMarkdown,
-          isDirty: false,
-          lastSavedAt: new Date(),
-        }));
+        updateActiveDocument((document) =>
+          markDocumentSaved(document, markdown, filePath, fileName),
+        );
       },
       createNewDocument: () => {
         const newDocument = createDocument();

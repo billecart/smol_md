@@ -23,6 +23,7 @@ type ToolbarProps = {
   onSaveAs: () => void | Promise<void>;
   onClose: () => void | Promise<void>;
   onCloseAll: () => void | Promise<void>;
+  onCloseWindow: () => void | Promise<void>;
   onEditorModeChange: (mode: EditorMode) => void;
 };
 
@@ -36,6 +37,7 @@ export function Toolbar({
   onSaveAs,
   onClose,
   onCloseAll,
+  onCloseWindow,
   onEditorModeChange,
 }: ToolbarProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -91,10 +93,6 @@ export function Toolbar({
 
   const minimizeWindow = () => {
     void getCurrentWindow().minimize();
-  };
-
-  const closeWindow = () => {
-    void getCurrentWindow().close();
   };
 
   return (
@@ -169,7 +167,7 @@ export function Toolbar({
             <button
               type="button"
               className="window-close"
-              onClick={closeWindow}
+              onClick={() => void onCloseWindow()}
               title="Close"
             >
               <X aria-hidden="true" size={15} />
