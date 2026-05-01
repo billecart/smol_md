@@ -8,10 +8,11 @@ import {
   toggleLinkCommand,
   toggleStrongCommand,
   wrapInBulletListCommand,
+  wrapInBlockquoteCommand,
   wrapInHeadingCommand,
   wrapInOrderedListCommand,
 } from "@milkdown/kit/preset/commonmark";
-import { Plugin } from "@milkdown/kit/prose/state";
+import { Plugin, TextSelection } from "@milkdown/kit/prose/state";
 import { history } from "@milkdown/kit/plugin/history";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import { $prose, callCommand, replaceAll } from "@milkdown/kit/utils";
@@ -29,7 +30,7 @@ type ContextMenuPosition = {
   y: number;
 };
 
-const headingEnterPlugin = $prose(
+const customEnterPlugin = $prose(
   () =>
     new Plugin({
       props: {
@@ -41,6 +42,63 @@ const headingEnterPlugin = $prose(
           const { state, dispatch } = view;
           const { $from } = state.selection;
           const paragraph = state.schema.nodes.paragraph;
+
+          if ($from.parent.type.name === "code_block" && paragraph) {
+            const codeBlock = $from.parent;
+            const cursorOffset = $from.parentOffset;
+            const textBeforeCursor = codeBlock.textBetween(
+              0,
+              cursorOffset,
+              "\n",
+              "\n",
+            );
+            const textAfterCursor = codeBlock.textBetween(
+              cursorOffset,
+              codeBlock.content.size,
+              "\n",
+              "\n",
+            );
+            const isOnTrailingEmptyLine =
+              textAfterCursor.length === 0 &&
+              (textBeforeCursor.length === 0 ||
+                textBeforeCursor.endsWith("\n"));
+
+            if (!isOnTrailingEmptyLine) {
+              return false;
+            }
+
+            event.preventDefault();
+
+            const paragraphNode = paragraph.createAndFill();
+
+            if (!paragraphNode) {
+              return false;
+            }
+
+            const codeBlockDepth = $from.depth;
+            const codeBlockContentStart = $from.start(codeBlockDepth);
+            const hasTrailingLineBreak = textBeforeCursor.endsWith("\n");
+            let afterCodeBlock = $from.after(codeBlockDepth);
+            let transaction = state.tr;
+
+            if (hasTrailingLineBreak) {
+              const lineBreakPosition = codeBlockContentStart + cursorOffset - 1;
+              transaction = transaction.delete(
+                lineBreakPosition,
+                lineBreakPosition + 1,
+              );
+              afterCodeBlock -= 1;
+            }
+
+            transaction = transaction
+              .insert(afterCodeBlock, paragraphNode)
+              .setSelection(
+                TextSelection.near(transaction.doc.resolve(afterCodeBlock + 1)),
+              )
+              .scrollIntoView();
+            dispatch(transaction);
+            return true;
+          }
 
           if ($from.parent.type.name !== "heading" || !paragraph) {
             return false;
@@ -88,7 +146,7 @@ function RichEditorInner({ value, onChange }: RichEditorProps) {
             }
           });
         })
-        .use(headingEnterPlugin)
+        .use(customEnterPlugin)
         .use(commonmark)
         .use(history)
         .use(listener),
@@ -163,7 +221,7 @@ function RichEditorInner({ value, onChange }: RichEditorProps) {
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const menuWidth = 184;
-    const menuHeight = 312;
+    const menuHeight = 340;
 
     setContextMenuPosition({
       x: Math.min(event.clientX, window.innerWidth - menuWidth - 8),
@@ -245,6 +303,13 @@ function RichEditorInner({ value, onChange }: RichEditorProps) {
             onClick={() => runCommand(wrapInOrderedListCommand)}
           >
             Numbered list
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => runCommand(wrapInBlockquoteCommand)}
+          >
+            Blockquote
           </button>
           <button
             type="button"
