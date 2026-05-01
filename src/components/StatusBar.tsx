@@ -22,13 +22,15 @@ export function StatusBar({
   const characters = markdown.length;
   const counterValue = counterMode === "words" ? words : characters;
   const counterLabel = counterMode === "words" ? "word" : "char";
+  const saveState = getSaveState(isDirty, lastSavedAt, Boolean(filePath));
+  const documentLabel = filePath ?? "untitled draft";
+  const statusMessage = message === "Ready" ? "" : message;
 
   return (
     <footer className="status-bar">
-      <span>{isDirty ? "Unsaved" : "Saved"}</span>
-      <span className="path-text">{filePath ?? "No file selected"}</span>
-      <span className="status-message">{message}</span>
-      <span>{lastSavedAt ? lastSavedAt.toLocaleTimeString() : "Not saved yet"}</span>
+      <span className="path-text">{documentLabel}</span>
+      <span>{saveState}</span>
+      <span className="status-message">{statusMessage}</span>
       <button
         type="button"
         className="counter-toggle"
@@ -42,6 +44,22 @@ export function StatusBar({
       </button>
     </footer>
   );
+}
+
+function getSaveState(
+  isDirty: boolean,
+  lastSavedAt: Date | null,
+  hasFilePath: boolean,
+) {
+  if (isDirty) {
+    return "Unsaved";
+  }
+
+  if (lastSavedAt) {
+    return `saved ${lastSavedAt.toLocaleTimeString()}`;
+  }
+
+  return hasFilePath ? "saved" : "Unsaved";
 }
 
 function countWords(markdown: string) {

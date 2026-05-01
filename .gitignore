@@ -3,6 +3,7 @@ dist/
 src-tauri/target/
 dev-server*.log
 tauri-dev*.log
+tauri-*.log
 release/
 *.bak
 *.tmp
