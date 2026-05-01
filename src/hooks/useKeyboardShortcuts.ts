@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { getShortcutAction } from "../utils/keyboardShortcuts";
 
 type KeyboardShortcuts = {
   onNew: () => void;
@@ -17,32 +18,23 @@ export function useKeyboardShortcuts({
 }: KeyboardShortcuts) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      const key = event.key.toLowerCase();
+      const action = getShortcutAction(event);
 
-      if (!event.ctrlKey) {
+      if (!action) {
         return;
       }
 
-      if (key === "n") {
-        event.preventDefault();
+      event.preventDefault();
+
+      if (action === "new") {
         onNew();
-      }
-
-      if (key === "o") {
-        event.preventDefault();
+      } else if (action === "open") {
         onOpen();
-      }
-
-      if (key === "s" && event.shiftKey) {
-        event.preventDefault();
-        onSaveAs();
-      } else if (key === "s") {
-        event.preventDefault();
+      } else if (action === "save") {
         onSave();
-      }
-
-      if (key === "`") {
-        event.preventDefault();
+      } else if (action === "saveAs") {
+        onSaveAs();
+      } else if (action === "toggleSource") {
         onToggleSourceMode?.();
       }
     };

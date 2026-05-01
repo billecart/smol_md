@@ -1,4 +1,9 @@
 import { useMemo, useState } from "react";
+import {
+  countCharacters,
+  countWords,
+  type CounterMode,
+} from "../utils/editorStats";
 
 type StatusBarProps = {
   filePath: string | null;
@@ -7,8 +12,6 @@ type StatusBarProps = {
   markdown: string;
   message: string;
 };
-
-type CounterMode = "words" | "characters";
 
 export function StatusBar({
   filePath,
@@ -19,7 +22,7 @@ export function StatusBar({
 }: StatusBarProps) {
   const [counterMode, setCounterMode] = useState<CounterMode>("words");
   const words = useMemo(() => countWords(markdown), [markdown]);
-  const characters = markdown.length;
+  const characters = countCharacters(markdown);
   const counterValue = counterMode === "words" ? words : characters;
   const counterLabel = counterMode === "words" ? "word" : "char";
   const saveState = getSaveState(isDirty, lastSavedAt, Boolean(filePath));
@@ -60,9 +63,4 @@ function getSaveState(
   }
 
   return hasFilePath ? "saved" : "Unsaved";
-}
-
-function countWords(markdown: string) {
-  const matches = markdown.trim().match(/\S+/g);
-  return matches ? matches.length : 0;
 }

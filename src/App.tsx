@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { confirm } from "@tauri-apps/plugin-dialog";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { RichEditor } from "./components/RichEditor";
 import { SourceEditor } from "./components/SourceEditor";
 import { StatusBar } from "./components/StatusBar";
@@ -15,6 +16,7 @@ import {
   saveMarkdownFile,
   saveMarkdownFileAs,
 } from "./services/fileService";
+import { isUnsafeEmptyOverwrite } from "./utils/saveSafety";
 
 type EditorMode = "rich" | "source";
 
@@ -102,6 +104,11 @@ function App() {
     }
 
     try {
+      if (isUnsafeEmptyOverwrite(markdown, originalMarkdown, filePath)) {
+        setMessage("Save blocked: empty content was not written over the existing file");
+        return;
+      }
+
       const result = await saveMarkdownFile(filePath, markdown, true);
       markSaved(markdown, filePath);
       setMessage(
@@ -180,6 +187,31 @@ function App() {
     setMessage("Closed all documents");
   };
 
+  const handleCloseWindow = async () => {
+    if (!isDesktopApp) {
+      window.close();
+      return;
+    }
+
+    if (hasDirtyDocuments) {
+      const shouldClose = await confirm(
+        "You have unsaved changes. Close without saving?",
+        {
+          title: "Unsaved changes",
+          kind: "warning",
+          okLabel: "Close without saving",
+          cancelLabel: "Keep editing",
+        },
+      );
+
+      if (!shouldClose) {
+        return;
+      }
+    }
+
+    await getCurrentWindow().destroy();
+  };
+
   const handleEditorModeChange = (mode: EditorMode) => {
     if (mode === "source") {
       setMarkdown(markdown);
@@ -232,6 +264,7 @@ function App() {
           onSaveAs={handleSaveAs}
           onClose={handleCloseActiveDocument}
           onCloseAll={handleCloseAllDocuments}
+          onCloseWindow={handleCloseWindow}
           onEditorModeChange={handleEditorModeChange}
         />
       </div>

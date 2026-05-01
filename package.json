@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "test": "node ./scripts/run-tests.mjs",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri"
