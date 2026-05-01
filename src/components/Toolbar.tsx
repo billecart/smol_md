@@ -1,9 +1,15 @@
-import type { ReactNode } from "react";
-import duplicateIcon from "../assets/icons/duplicate.svg";
-import newIcon from "../assets/icons/new.svg";
-import openIcon from "../assets/icons/open.svg";
-import saveIcon from "../assets/icons/save.svg";
-import smolLogo from "../assets/icons/smol.svg";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
+import { Menu, Minus, Square, X } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import appIcon from "../assets/icons/s.svg";
+import smolLogo from "../assets/icons/smol_md.svg";
+import { isRunningInTauri } from "../services/fileService";
 
 type EditorMode = "rich" | "source";
 
@@ -11,10 +17,12 @@ type ToolbarProps = {
   canSave: boolean;
   editorMode: EditorMode;
   tabs: ReactNode;
-  onNew: () => void;
-  onOpen: () => void;
-  onSave: () => void;
-  onSaveAs: () => void;
+  onNew: () => void | Promise<void>;
+  onOpen: () => void | Promise<void>;
+  onSave: () => void | Promise<void>;
+  onSaveAs: () => void | Promise<void>;
+  onClose: () => void | Promise<void>;
+  onCloseAll: () => void | Promise<void>;
   onEditorModeChange: (mode: EditorMode) => void;
 };
 
@@ -26,80 +34,178 @@ export function Toolbar({
   onOpen,
   onSave,
   onSaveAs,
+  onClose,
+  onCloseAll,
   onEditorModeChange,
 }: ToolbarProps) {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const isDesktopApp = isRunningInTauri();
+
+  useEffect(() => {
+    if (!isMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isMenuOpen]);
+
+  const runMenuCommand = async (command: () => void | Promise<void>) => {
+    setIsMenuOpen(false);
+    await command();
+  };
+
+  const startWindowDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!isDesktopApp || event.button !== 0) {
+      return;
+    }
+
+    void getCurrentWindow().startDragging();
+  };
+
+  const toggleWindowMaximize = () => {
+    if (!isDesktopApp) {
+      return;
+    }
+
+    void getCurrentWindow().toggleMaximize();
+  };
+
+  const minimizeWindow = () => {
+    void getCurrentWindow().minimize();
+  };
+
+  const closeWindow = () => {
+    void getCurrentWindow().close();
+  };
+
   return (
-    <header className="toolbar">
-      <div className="brand">
-        <img className="brand-logo" src={smolLogo} alt="smol" />
-      </div>
-
-      {tabs}
-
-      <div className="toolbar-controls">
-        <div className="mode-switch" aria-label="Editor mode">
+    <>
+      <header className="app-bar">
+        <div className="app-menu" ref={menuRef}>
+          <img className="app-icon" src={appIcon} alt="" aria-hidden="true" />
           <button
             type="button"
-            className={editorMode === "rich" ? "active" : ""}
-            aria-pressed={editorMode === "rich"}
-            onClick={() => onEditorModeChange("rich")}
+            className="menu-trigger"
+            aria-label="open menu"
+            aria-expanded={isMenuOpen}
+            aria-haspopup="menu"
+            onClick={() => setIsMenuOpen((current) => !current)}
+            title="menu"
           >
-            Rich
+            <Menu aria-hidden="true" size={18} strokeWidth={1.8} />
           </button>
-          <button
-            type="button"
-            className={editorMode === "source" ? "active" : ""}
-            aria-pressed={editorMode === "source"}
-            onClick={() => onEditorModeChange("source")}
-          >
-            Source
-          </button>
+
+          {isMenuOpen ? (
+            <nav className="command-menu" aria-label="file commands">
+              <button type="button" onClick={() => void runMenuCommand(onNew)}>
+                new
+              </button>
+              <button type="button" onClick={() => void runMenuCommand(onOpen)}>
+                open
+              </button>
+              <button
+                type="button"
+                disabled={!canSave}
+                onClick={() => void runMenuCommand(onSave)}
+              >
+                save
+              </button>
+              <button
+                type="button"
+                onClick={() => void runMenuCommand(onSaveAs)}
+              >
+                save as
+              </button>
+              <div className="command-menu-divider" aria-hidden="true" />
+              <button type="button" onClick={() => void runMenuCommand(onClose)}>
+                close
+              </button>
+              <button
+                type="button"
+                onClick={() => void runMenuCommand(onCloseAll)}
+              >
+                close all
+              </button>
+            </nav>
+          ) : null}
+        </div>
+        <div
+          className="window-drag-region"
+          aria-hidden="true"
+          onDoubleClick={toggleWindowMaximize}
+          onPointerDown={startWindowDrag}
+        />
+        {isDesktopApp ? (
+          <div className="window-controls" aria-label="Window controls">
+            <button type="button" onClick={minimizeWindow} title="Minimize">
+              <Minus aria-hidden="true" size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={toggleWindowMaximize}
+              title="Maximize"
+            >
+              <Square aria-hidden="true" size={12} />
+            </button>
+            <button
+              type="button"
+              className="window-close"
+              onClick={closeWindow}
+              title="Close"
+            >
+              <X aria-hidden="true" size={15} />
+            </button>
+          </div>
+        ) : null}
+      </header>
+
+      <header className="tab-bar">
+        <div className="tab-brand">
+          <img className="brand-logo" src={smolLogo} alt="smol_md" />
         </div>
 
-        <nav className="toolbar-actions" aria-label="File actions">
-          <button type="button" onClick={onNew} title="New document">
-            <img
-              className="toolbar-icon"
-              src={newIcon}
-              alt=""
-              aria-hidden="true"
-            />
-            <span>New</span>
-          </button>
-          <button type="button" onClick={onOpen} title="Open Markdown file">
-            <img
-              className="toolbar-icon"
-              src={openIcon}
-              alt=""
-              aria-hidden="true"
-            />
-            <span>Open</span>
-          </button>
-          <button
-            type="button"
-            onClick={onSave}
-            title="Save"
-            disabled={!canSave}
-          >
-            <img
-              className="toolbar-icon"
-              src={saveIcon}
-              alt=""
-              aria-hidden="true"
-            />
-            <span>Save</span>
-          </button>
-          <button type="button" onClick={onSaveAs} title="Save As">
-            <img
-              className="toolbar-icon"
-              src={duplicateIcon}
-              alt=""
-              aria-hidden="true"
-            />
-            <span>Save As</span>
-          </button>
-        </nav>
-      </div>
-    </header>
+        {tabs}
+
+        <div className="toolbar-controls">
+          <div className="mode-switch" aria-label="Editor mode">
+            <button
+              type="button"
+              className={editorMode === "rich" ? "active" : ""}
+              aria-pressed={editorMode === "rich"}
+              onClick={() => onEditorModeChange("rich")}
+            >
+              Rich
+            </button>
+            <button
+              type="button"
+              className={editorMode === "source" ? "active" : ""}
+              aria-pressed={editorMode === "source"}
+              onClick={() => onEditorModeChange("source")}
+            >
+              Source
+            </button>
+          </div>
+        </div>
+      </header>
+    </>
   );
 }

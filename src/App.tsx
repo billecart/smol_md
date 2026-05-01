@@ -36,6 +36,7 @@ function App() {
     markSaved,
     createNewDocument,
     closeDocument,
+    resetWorkspace,
   } = documentState;
   const [message, setMessage] = useState("Ready");
   const [editorMode, setEditorMode] = useState<EditorMode>("rich");
@@ -148,6 +149,37 @@ function App() {
     setMessage(`Closed ${document.fileName}`);
   };
 
+  const handleCloseActiveDocument = async () => {
+    await handleCloseDocument(activeDocumentId);
+  };
+
+  const handleCloseAllDocuments = async () => {
+    const dirtyDocuments = documents.filter((document) => document.isDirty);
+
+    if (dirtyDocuments.length > 0) {
+      const message =
+        dirtyDocuments.length === 1
+          ? `${dirtyDocuments[0]!.fileName} has unsaved changes. Discard it and close all documents?`
+          : `${dirtyDocuments.length} documents have unsaved changes. Discard them and close all documents?`;
+
+      const shouldDiscard = !isDesktopApp
+        ? window.confirm(message)
+        : await confirm(message, {
+            title: "Unsaved changes",
+            kind: "warning",
+            okLabel: "close all",
+            cancelLabel: "Keep editing",
+          });
+
+      if (!shouldDiscard) {
+        return;
+      }
+    }
+
+    resetWorkspace();
+    setMessage("Closed all documents");
+  };
+
   const handleEditorModeChange = (mode: EditorMode) => {
     if (mode === "source") {
       setMarkdown(markdown);
@@ -198,6 +230,8 @@ function App() {
           onOpen={handleOpen}
           onSave={handleSave}
           onSaveAs={handleSaveAs}
+          onClose={handleCloseActiveDocument}
+          onCloseAll={handleCloseAllDocuments}
           onEditorModeChange={handleEditorModeChange}
         />
       </div>

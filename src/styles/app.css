@@ -73,7 +73,7 @@ input:focus-visible {
 .top-chrome-hitbox {
   position: fixed;
   z-index: 21;
-  top: 0;
+  top: 32px;
   right: 0;
   left: 0;
   height: var(--toolbar-peek-height);
@@ -86,53 +86,168 @@ input:focus-visible {
   top: 0;
   left: 0;
   right: 0;
-  opacity: 0;
-  transform: translateY(-100%);
-  transition:
-    opacity 160ms ease,
-    transform 160ms ease;
 }
 
-.top-chrome-hitbox:hover + .top-chrome,
-.top-chrome-visible,
-.top-chrome:hover,
-.top-chrome:focus-within {
+.top-chrome-hitbox:hover + .top-chrome .tab-bar,
+.top-chrome-visible .tab-bar,
+.top-chrome:hover .tab-bar,
+.top-chrome:focus-within .tab-bar {
   opacity: 1;
   transform: translateY(0);
+  pointer-events: auto;
 }
 
-.toolbar {
+.app-bar {
   display: grid;
-  grid-template-columns: minmax(88px, 1fr) minmax(0, auto) minmax(230px, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 18px;
+  min-height: 32px;
+  padding: 0 0 0 18px;
+  background: rgba(243, 243, 242, 0.92);
+  color: var(--text-muted);
+  backdrop-filter: blur(18px);
+}
+
+.app-menu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.window-drag-region {
+  align-self: stretch;
+  min-width: 0;
+}
+
+.window-controls {
+  display: flex;
+  align-self: stretch;
+  align-items: stretch;
+  justify-self: end;
+}
+
+.window-controls button {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  color: var(--text-normal);
+}
+
+.window-controls button:hover,
+.window-controls button:focus-visible {
+  background: rgba(22, 22, 14, 0.06);
+}
+
+.window-controls .window-close:hover,
+.window-controls .window-close:focus-visible {
+  background: #c42b1c;
+  color: #ffffff;
+}
+
+.tab-bar {
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) minmax(0, auto) minmax(100px, 1fr);
+  align-items: center;
+  gap: 16px;
   min-height: 48px;
   padding: 8px 18px;
   border-bottom: 1px solid transparent;
   background: rgba(243, 243, 242, 0.88);
   color: var(--text-muted);
-  transition: border-color 160ms ease;
+  opacity: 0;
+  transform: translateY(-8px);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease,
+    border-color 160ms ease;
+  pointer-events: none;
   backdrop-filter: blur(18px);
 }
 
-.toolbar:hover,
-.toolbar:focus-within {
+.tab-bar:hover,
+.tab-bar:focus-within {
   border-color: var(--border-subtle);
   color: var(--text-normal);
 }
 
-.brand {
+.tab-brand {
   justify-self: start;
   display: inline-flex;
   align-items: center;
-  width: 46px;
-  min-width: 46px;
+  min-width: 0;
+  margin-right: 24px;
+}
+
+.app-icon {
+  display: block;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+}
+
+.menu-trigger {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  color: var(--text-muted);
+}
+
+.menu-trigger:hover,
+.menu-trigger:focus-visible,
+.menu-trigger[aria-expanded="true"] {
+  background: rgba(22, 22, 14, 0.055);
+  color: var(--text-normal);
 }
 
 .brand-logo {
   display: block;
-  width: 46px;
+  width: 78px;
+  max-width: 30vw;
   height: auto;
+}
+
+.command-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 8px);
+  left: 22px;
+  display: grid;
+  width: 158px;
+  padding: 5px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 7px;
+  background: rgba(236, 236, 234, 0.97);
+  box-shadow: 0 14px 36px rgba(22, 22, 14, 0.13);
+  color: var(--text-normal);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  backdrop-filter: blur(18px);
+}
+
+.command-menu button {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 9px;
+  border-radius: 5px;
+  color: inherit;
+  text-align: left;
+}
+
+.command-menu button:not(:disabled):hover,
+.command-menu button:not(:disabled):focus-visible {
+  background: rgba(22, 22, 14, 0.065);
+}
+
+.command-menu-divider {
+  height: 1px;
+  margin: 5px 4px;
+  background: var(--border-subtle);
 }
 
 .top-tabs {
@@ -215,45 +330,7 @@ input:focus-visible {
   justify-self: end;
   display: flex;
   align-items: center;
-  gap: 18px;
   min-width: 0;
-}
-
-.toolbar-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 3px;
-}
-
-.toolbar-actions button {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 6px;
-  color: var(--text-muted);
-}
-
-.toolbar-actions button:not(:disabled):hover,
-.toolbar-actions button:not(:disabled):focus-visible {
-  background: rgba(22, 22, 14, 0.055);
-  color: var(--text-normal);
-}
-
-.toolbar-icon {
-  display: block;
-  width: 19px;
-  height: 19px;
-  object-fit: contain;
-}
-
-.toolbar-actions button span {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
 }
 
 .document-frame {
@@ -513,7 +590,7 @@ input:focus-visible {
   bottom: 0;
   left: 0;
   display: grid;
-  grid-template-columns: auto minmax(100px, 1.2fr) minmax(80px, 1fr) auto auto;
+  grid-template-columns: minmax(120px, 1.4fr) auto minmax(120px, 1fr) auto;
   gap: 16px;
   align-items: center;
   min-height: 34px;
@@ -558,6 +635,7 @@ input:focus-visible {
 }
 
 .counter-toggle {
+  grid-column: 4;
   justify-self: end;
   padding: 0;
   color: inherit;
@@ -576,30 +654,35 @@ input:focus-visible {
     --editor-column-width: min(100vw - 32px, 740px);
   }
 
-  .toolbar {
-    grid-template-columns: minmax(0, 1fr) auto;
+  .app-bar {
+    padding-left: 12px;
+  }
+
+  .tab-bar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 8px;
     padding: 8px 12px;
   }
 
-  .brand {
-    display: none;
+  .tab-brand {
+    display: inline-flex;
+    order: 1;
+  }
+
+  .brand-logo {
+    width: 78px;
+    max-width: 30vw;
   }
 
   .top-tabs {
     justify-self: start;
     justify-content: flex-start;
     max-width: 100%;
-    order: 1;
+    order: 2;
   }
 
   .toolbar-controls {
-    order: 2;
-    gap: 12px;
-  }
-
-  .toolbar-actions {
-    justify-content: flex-start;
+    order: 3;
   }
 
   .document-frame {
@@ -618,7 +701,11 @@ input:focus-visible {
   }
 
   .status-message,
-  .status-bar span:nth-of-type(4) {
+  .status-bar span:nth-of-type(2) {
     display: none;
+  }
+
+  .counter-toggle {
+    grid-column: auto;
   }
 }
