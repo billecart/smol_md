@@ -1,33 +1,37 @@
 # smol_md
 
-smol_md is a smol Windows markdown editor that allows you to edit in rich text (if you like clean minimal pages, like me). It opens markdown files, lets you edit it visually or as plain Markdown text, save it. 
+smol_md is a tiny Windows Markdown editor for focused writing. It opens Markdown files, lets you edit them visually or as plain text, and saves them back to disk without turning the app into a whole publishing suite.
 
-This is my overnight vibecoding project (not a real coder here). Polishing is in progress. 
+## Version 1.0.0
 
-This is Milestone 2 from the design doc. The rich editor is powered by Milkdown, while Markdown remains the app's shared document format.
+The 1.0.0 Windows release package is built into `release/`.
 
-## What works now
+Use one of these files:
 
-- New empty document
+- `release/smol_md_1.0.0_x64-setup.exe` - Windows installer
+- `release/smol_md_1.0.0_x64_en-US.msi` - MSI package
+- `release/smol_md_1.0.0_portable.exe` - portable executable
+
+`release/smol_md.exe` is also copied as the latest built executable.
+
+## Features
+
+- Create new Markdown documents
 - Open `.md` and `.markdown` files
-- Edit Markdown in a quiet writing area
-- Switch between Rich and Source modes without losing content
-- Use a small formatting toolbar for headings, bold, italic, lists, links, inline code, and code blocks
+- Work with multiple open tabs
+- Edit in Rich mode or Source mode
+- Preserve Markdown as the shared document format
 - Save back to the same file
 - Save As a new Markdown file
-- Warn before discarding unsaved changes
-- Create a `.bak` backup before overwriting an existing file
+- Warn before closing dirty tabs or quitting with unsaved changes
+- Block unsafe empty overwrites of existing non-empty files
+- Use a custom Windows titlebar with drag, minimize, maximize, and close controls
 - Keyboard shortcuts:
   - `Ctrl+N`: New
   - `Ctrl+O`: Open
   - `Ctrl+S`: Save
   - `Ctrl+Shift+S`: Save As
-
-## What is not here yet
-
-- Dark mode
-- Tables
-- Advanced link editing
+  - `` Ctrl+` ``: Toggle Source mode
 
 ## Setup
 
@@ -35,9 +39,8 @@ You need:
 
 - Node.js
 - npm
-- Rust, which Tauri uses to build the desktop app
-
-Node and npm are already installed on this machine. Rust was not found when this project was created.
+- Rust
+- Microsoft C++ Build Tools
 
 ## Install dependencies
 
@@ -47,15 +50,13 @@ npm install
 
 ## Run as a web preview
 
-This starts the editor in a browser-like preview. It is useful for checking the interface, but normal browser pages cannot silently overwrite files on your disk.
+This starts the editor in a browser-like preview. It is useful for checking the interface, but normal browser pages cannot use the native Windows file dialogs.
 
 ```powershell
 npm run dev
 ```
 
 ## Run as a Windows desktop app
-
-After Rust and Microsoft C++ Build Tools are installed:
 
 ```powershell
 npm run tauri dev
@@ -67,37 +68,26 @@ On this machine, the easier command is:
 .\scripts\run-desktop.ps1
 ```
 
-## Build a Windows app
-
-After Rust and Microsoft C++ Build Tools are installed:
-
-```powershell
-npm run tauri build
-```
-
-On this machine, the easier command is:
+## Build the Windows release
 
 ```powershell
 .\scripts\build-windows.ps1
 ```
 
-Built files are copied to:
+The script builds the Tauri app and copies the 1.0.0 release artifacts into:
 
 ```text
 release/
 ```
 
-## Safety note
+## Test
 
-When saving over an existing Markdown file, smol_md creates a backup next to it first. For example:
-
-```text
-notes.md
-notes.md.bak
+```powershell
+npm test
 ```
 
-If a backup already exists, smol_md creates a timestamped backup instead.
+## Known limitations
 
-## Known limitation
-
-Rich mode covers the common Markdown writing tools first. Source mode is still available when you want to edit the exact Markdown text.
+- No dark mode yet
+- Tables are best edited in Source mode
+- Advanced link editing is intentionally minimal
