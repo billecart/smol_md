@@ -109,13 +109,9 @@ function App() {
         return;
       }
 
-      const result = await saveMarkdownFile(filePath, markdown, true);
+      await saveMarkdownFile(filePath, markdown);
       markSaved(markdown, filePath);
-      setMessage(
-        result.backupPath
-          ? `Saved. Backup: ${result.backupPath}`
-          : "Saved",
-      );
+      setMessage("Saved");
     } catch (error) {
       setMessage(getErrorMessage(error));
     }
@@ -131,11 +127,7 @@ function App() {
       }
 
       markSaved(markdown, result.filePath, result.fileName);
-      setMessage(
-        result.backupPath
-          ? `Saved as ${result.fileName}. Backup: ${result.backupPath}`
-          : `Saved as ${result.fileName}`,
-      );
+      setMessage(`Saved as ${result.fileName}`);
     } catch (error) {
       setMessage(getErrorMessage(error));
     }

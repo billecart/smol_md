@@ -143,6 +143,13 @@ export function Toolbar({
               >
                 close all
               </button>
+              <div className="command-menu-divider" aria-hidden="true" />
+              <button
+                type="button"
+                onClick={() => void runMenuCommand(onCloseWindow)}
+              >
+                quit
+              </button>
             </nav>
           ) : null}
         </div>
