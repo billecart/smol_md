@@ -1,6 +1,9 @@
 # smol_md
 
-smol_md is a tiny Windows Markdown editor for focused writing. It opens Markdown files, lets you edit them visually or as plain text, and saves them back to disk without turning the app into a whole publishing suite.
+smol_md is a smol Windows markdown & rich text editor for those who, like me, like the minimalism of iA Writer and hate the markdown clutter. 
+Open Markdown files, edit them visually or as plain text, and save them back to disk. Smol and efficient.
+
+I'm no real coder, so this is entirely vibecoded within 24 hours. 
 
 ## Version 1.0.0
 
