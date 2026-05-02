@@ -2,8 +2,8 @@
 
 smol_md is a smol Windows markdown & rich text editor for those who, like me, like the minimalism of iA Writer and hate the markdown clutter. 
 Open Markdown files, edit them visually or as plain text, and save them back to disk. Smol and efficient.
-<img width="1564" height="1144" alt="smol_screen_rich" src="https://github.com/user-attachments/assets/59465f76-a91c-4b71-932b-511747f1ea7b" />
-<img width="1564" height="1144" alt="smol_screen_source" src="https://github.com/user-attachments/assets/aeb189e8-8d17-4147-8c5d-fc6afc553f27" />
+<img width="782" height="572" alt="smol_screen_rich" src="https://github.com/user-attachments/assets/59465f76-a91c-4b71-932b-511747f1ea7b" />
+<img width="782" height="572" alt="smol_screen_source" src="https://github.com/user-attachments/assets/aeb189e8-8d17-4147-8c5d-fc6afc553f27" />
 
 I'm no real coder, so this is entirely vibecoded within 24 hours. 
 
