@@ -76,11 +76,11 @@ export function Toolbar({
   };
 
   const startWindowDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!isDesktopApp || event.button !== 0) {
+    if (!isDesktopApp || event.button !== 0 || event.detail > 1) {
       return;
     }
 
-    void getCurrentWindow().startDragging();
+    void getCurrentWindow().startDragging().catch(logWindowControlError);
   };
 
   const toggleWindowMaximize = () => {
@@ -88,11 +88,11 @@ export function Toolbar({
       return;
     }
 
-    void getCurrentWindow().toggleMaximize();
+    void getCurrentWindow().toggleMaximize().catch(logWindowControlError);
   };
 
   const minimizeWindow = () => {
-    void getCurrentWindow().minimize();
+    void getCurrentWindow().minimize().catch(logWindowControlError);
   };
 
   return (
@@ -155,6 +155,7 @@ export function Toolbar({
         </div>
         <div
           className="window-drag-region"
+          data-tauri-drag-region
           aria-hidden="true"
           onDoubleClick={toggleWindowMaximize}
           onPointerDown={startWindowDrag}
@@ -213,4 +214,8 @@ export function Toolbar({
       </header>
     </>
   );
+}
+
+function logWindowControlError(error: unknown) {
+  console.error("Window control failed", error);
 }

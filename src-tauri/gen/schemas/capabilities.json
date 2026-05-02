@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Default permissions for smol_md.","local":true,"windows":["main"],"permissions":["core:default","core:window:allow-destroy","dialog:default","file-commands"]}}
+{"default":{"identifier":"default","description":"Default permissions for smol_md.","local":true,"windows":["main"],"permissions":["core:default","core:window:allow-destroy","core:window:allow-minimize","core:window:allow-start-dragging","core:window:allow-toggle-maximize","dialog:default","file-commands"]}}
