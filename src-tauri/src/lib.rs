@@ -1,14 +1,7 @@
-use serde::Serialize;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
-
-#[derive(Serialize)]
-struct SaveResult {
-    #[serde(rename = "backupPath")]
-    backup_path: Option<String>,
-}
 
 #[tauri::command]
 fn read_markdown_file(path: String) -> Result<String, String> {
@@ -22,11 +15,7 @@ fn read_markdown_file(path: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn write_markdown_file(
-    path: String,
-    contents: String,
-    create_backup: bool,
-) -> Result<SaveResult, String> {
+fn write_markdown_file(path: String, contents: String) -> Result<(), String> {
     let path = PathBuf::from(path);
 
     if !is_markdown_path(&path) {
@@ -39,41 +28,7 @@ fn write_markdown_file(
         );
     }
 
-    let backup_path = if create_backup && path.exists() {
-        Some(create_backup_file(&path)?)
-    } else {
-        None
-    };
-
-    if let Err(error) = write_file_durably(&path, contents.as_bytes()) {
-        if let Some(backup_path) = backup_path.as_ref() {
-            restore_backup_if_needed(&path, backup_path, &error)?;
-        }
-
-        return Err(error);
-    }
-
-    Ok(SaveResult {
-        backup_path: backup_path.map(|path| path.display().to_string()),
-    })
-}
-
-fn create_backup_file(path: &Path) -> Result<PathBuf, String> {
-    let first_choice = PathBuf::from(format!("{}.bak", path.display()));
-    let backup_path = if first_choice.exists() {
-        let timestamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| format!("Could not prepare backup: {error}"))?
-            .as_secs();
-        PathBuf::from(format!("{}.{}.bak", path.display(), timestamp))
-    } else {
-        first_choice
-    };
-
-    fs::copy(path, &backup_path)
-        .map_err(|error| format!("Could not create backup before saving: {error}"))?;
-
-    Ok(backup_path)
+    write_file_durably(&path, contents.as_bytes())
 }
 
 fn existing_file_has_content(path: &Path) -> Result<bool, String> {
@@ -138,24 +93,6 @@ fn create_temporary_save_path(path: &Path) -> Result<PathBuf, String> {
     Err("Could not prepare a temporary save path.".to_string())
 }
 
-fn restore_backup_if_needed(
-    path: &Path,
-    backup_path: &Path,
-    save_error: &str,
-) -> Result<(), String> {
-    if path.exists() {
-        return Ok(());
-    }
-
-    fs::copy(backup_path, path).map_err(|restore_error| {
-        format!("Could not save file: {save_error}. Backup restore also failed: {restore_error}")
-    })?;
-
-    Err(format!(
-        "Could not save file: {save_error}. The previous file was restored from backup."
-    ))
-}
-
 fn is_markdown_path(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|extension| extension.to_str()),
@@ -186,7 +123,7 @@ mod tests {
         let path = dir.join("notes.md");
         fs::write(&path, "original").unwrap();
 
-        let result = write_markdown_file(path.display().to_string(), String::new(), true);
+        let result = write_markdown_file(path.display().to_string(), String::new());
 
         assert!(result.is_err());
         assert_eq!(fs::read_to_string(&path).unwrap(), "original");
@@ -194,20 +131,16 @@ mod tests {
     }
 
     #[test]
-    fn save_existing_file_creates_backup_and_writes_new_contents() {
-        let dir = unique_test_dir("backup-save");
+    fn save_existing_file_writes_new_contents_without_backup() {
+        let dir = unique_test_dir("overwrite-save");
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("notes.md");
         fs::write(&path, "original").unwrap();
 
-        let result =
-            write_markdown_file(path.display().to_string(), "updated".to_string(), true).unwrap();
+        write_markdown_file(path.display().to_string(), "updated".to_string()).unwrap();
 
         assert_eq!(fs::read_to_string(&path).unwrap(), "updated");
-        assert_eq!(
-            fs::read_to_string(result.backup_path.unwrap()).unwrap(),
-            "original"
-        );
+        assert!(!PathBuf::from(format!("{}.bak", path.display())).exists());
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -218,7 +151,7 @@ mod tests {
         let path = dir.join("заметка.md");
         let text = "# Привет\n\nТекст заметки.";
 
-        write_markdown_file(path.display().to_string(), text.to_string(), true).unwrap();
+        write_markdown_file(path.display().to_string(), text.to_string()).unwrap();
 
         assert_eq!(
             read_markdown_file(path.display().to_string()).unwrap(),

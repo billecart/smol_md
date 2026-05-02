@@ -10,11 +10,6 @@ export type OpenedMarkdownFile = {
 export type SaveResult = {
   filePath: string | null;
   fileName: string;
-  backupPath: string | null;
-};
-
-type BackendSaveResult = {
-  backupPath: string | null;
 };
 
 export function isRunningInTauri() {
@@ -54,27 +49,23 @@ export async function openMarkdownFile(): Promise<OpenedMarkdownFile | null> {
 export async function saveMarkdownFile(
   filePath: string,
   markdown: string,
-  createBackup: boolean,
 ): Promise<SaveResult> {
   if (!isRunningInTauri()) {
     downloadMarkdown(markdown, getFileName(filePath));
     return {
       filePath,
       fileName: getFileName(filePath),
-      backupPath: null,
     };
   }
 
-  const result = await invoke<BackendSaveResult>("write_markdown_file", {
+  await invoke("write_markdown_file", {
     path: filePath,
     contents: markdown,
-    createBackup,
   });
 
   return {
     filePath,
     fileName: getFileName(filePath),
-    backupPath: result.backupPath,
   };
 }
 
@@ -88,7 +79,6 @@ export async function saveMarkdownFileAs(
     return {
       filePath: null,
       fileName,
-      backupPath: null,
     };
   }
 
@@ -107,7 +97,7 @@ export async function saveMarkdownFileAs(
   }
 
   const filePath = ensureMarkdownExtension(selected);
-  const saved = await saveMarkdownFile(filePath, markdown, true);
+  const saved = await saveMarkdownFile(filePath, markdown);
 
   return saved;
 }
