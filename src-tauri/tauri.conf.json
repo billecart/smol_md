@@ -34,6 +34,15 @@
       "icons/icon.ico"
     ],
     "shortDescription": "Tiny Markdown editor",
-    "longDescription": "A tiny focused Windows Markdown editor for opening one file, editing it, and saving it back as Markdown."
+    "longDescription": "A tiny focused Windows Markdown editor for opening one file, editing it, and saving it back as Markdown.",
+    "fileAssociations": [
+      {
+        "ext": ["md", "markdown"],
+        "name": "Markdown document",
+        "description": "Markdown document",
+        "role": "Editor",
+        "mimeType": "text/markdown"
+      }
+    ]
   }
 }

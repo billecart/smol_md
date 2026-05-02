@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { RichEditor } from "./components/RichEditor";
@@ -13,6 +13,7 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import {
   isRunningInTauri,
   openMarkdownFile,
+  openStartupMarkdownFile,
   saveMarkdownFile,
   saveMarkdownFileAs,
 } from "./services/fileService";
@@ -42,6 +43,7 @@ function App() {
   } = documentState;
   const [message, setMessage] = useState("Ready");
   const [editorMode, setEditorMode] = useState<EditorMode>("rich");
+  const hasCheckedStartupFile = useRef(false);
   const isDesktopApp = isRunningInTauri();
 
   const title = useMemo(() => {
@@ -54,6 +56,27 @@ function App() {
   }, [title]);
 
   useBeforeCloseWarning(hasDirtyDocuments);
+
+  useEffect(() => {
+    if (!isDesktopApp || hasCheckedStartupFile.current) {
+      return;
+    }
+
+    hasCheckedStartupFile.current = true;
+
+    void openStartupMarkdownFile()
+      .then((opened) => {
+        if (!opened) {
+          return;
+        }
+
+        loadDocument(opened);
+        setMessage(`Opened ${opened.fileName}`);
+      })
+      .catch((error) => {
+        setMessage(getErrorMessage(error));
+      });
+  }, [isDesktopApp, loadDocument]);
 
   const confirmDiscard = async (
     targetDocument: Pick<OpenDocument, "fileName" | "isDirty"> = documentState,
