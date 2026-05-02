@@ -2,7 +2,7 @@
 identifier = "file-commands"
 description = "Allow smol_md to read and write Markdown files selected by the user."
 commands.allow = [
+  "get_startup_markdown_file_path",
   "read_markdown_file",
   "write_markdown_file"
 ]
-

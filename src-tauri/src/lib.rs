@@ -1,7 +1,13 @@
+use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+#[tauri::command]
+fn get_startup_markdown_file_path() -> Option<String> {
+    find_startup_markdown_file(std::env::args_os().skip(1))
+}
 
 #[tauri::command]
 fn read_markdown_file(path: String) -> Result<String, String> {
@@ -101,10 +107,28 @@ fn is_markdown_path(path: &Path) -> bool {
     )
 }
 
+fn find_startup_markdown_file<I>(args: I) -> Option<String>
+where
+    I: IntoIterator<Item = OsString>,
+{
+    args.into_iter().find_map(markdown_path_from_arg)
+}
+
+fn markdown_path_from_arg(arg: OsString) -> Option<String> {
+    let path = arg.to_string_lossy().trim_matches('"').to_string();
+
+    if is_markdown_path(Path::new(&path)) {
+        return Some(path);
+    }
+
+    None
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            get_startup_markdown_file_path,
             read_markdown_file,
             write_markdown_file
         ])
@@ -158,6 +182,31 @@ mod tests {
             text
         );
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn startup_file_uses_first_markdown_argument() {
+        let args = [
+            OsString::from("--ignored"),
+            OsString::from("C:\\Notes\\daily.txt"),
+            OsString::from("C:\\Notes\\daily.md"),
+            OsString::from("C:\\Notes\\other.markdown"),
+        ];
+
+        assert_eq!(
+            find_startup_markdown_file(args),
+            Some("C:\\Notes\\daily.md".to_string())
+        );
+    }
+
+    #[test]
+    fn startup_file_accepts_quoted_windows_paths() {
+        let args = [OsString::from("\"C:\\Notes\\daily.markdown\"")];
+
+        assert_eq!(
+            find_startup_markdown_file(args),
+            Some("C:\\Notes\\daily.markdown".to_string())
+        );
     }
 
     fn unique_test_dir(name: &str) -> PathBuf {

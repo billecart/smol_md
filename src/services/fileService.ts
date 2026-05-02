@@ -35,13 +35,35 @@ export async function openMarkdownFile(): Promise<OpenedMarkdownFile | null> {
     return null;
   }
 
+  return openMarkdownFileAtPath(selected);
+}
+
+export async function openStartupMarkdownFile(): Promise<
+  OpenedMarkdownFile | null
+> {
+  if (!isRunningInTauri()) {
+    return null;
+  }
+
+  const filePath = await invoke<string | null>("get_startup_markdown_file_path");
+
+  if (!filePath) {
+    return null;
+  }
+
+  return openMarkdownFileAtPath(filePath);
+}
+
+export async function openMarkdownFileAtPath(
+  filePath: string,
+): Promise<OpenedMarkdownFile> {
   const markdown = await invoke<string>("read_markdown_file", {
-    path: selected,
+    path: filePath,
   });
 
   return {
-    filePath: selected,
-    fileName: getFileName(selected),
+    filePath,
+    fileName: getFileName(filePath),
     markdown,
   };
 }
