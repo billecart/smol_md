@@ -255,7 +255,7 @@ input:focus-visible {
   top: calc(100% + 8px);
   left: 22px;
   display: grid;
-  width: 158px;
+  width: 176px;
   padding: 5px;
   border: 1px solid var(--border-subtle);
   border-radius: 7px;
@@ -275,6 +275,41 @@ input:focus-visible {
   border-radius: 5px;
   color: inherit;
   text-align: left;
+}
+
+.command-submenu {
+  position: relative;
+}
+
+.command-submenu > button::after {
+  float: right;
+  color: var(--text-faint);
+  content: ">";
+}
+
+.command-submenu-panel {
+  position: absolute;
+  top: -6px;
+  left: calc(100% + 6px);
+  display: none;
+  width: 210px;
+  padding: 5px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 7px;
+  background: rgba(236, 236, 234, 0.97);
+  box-shadow: 0 14px 36px rgba(22, 22, 14, 0.13);
+  backdrop-filter: blur(18px);
+}
+
+.command-submenu:hover .command-submenu-panel,
+.command-submenu:focus-within .command-submenu-panel {
+  display: grid;
+}
+
+.command-submenu-panel button {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .command-menu button:not(:disabled):hover,

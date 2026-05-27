@@ -10,6 +10,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import appIcon from "../assets/icons/s.svg";
 import smolLogo from "../assets/icons/smol_md.svg";
 import { isRunningInTauri } from "../services/fileService";
+import type { RecentDocument } from "../utils/recentDocuments";
 
 type EditorMode = "rich" | "source";
 
@@ -19,6 +20,7 @@ type ToolbarProps = {
   tabs: ReactNode;
   onNew: () => void | Promise<void>;
   onOpen: () => void | Promise<void>;
+  onOpenRecent: (document: RecentDocument) => void | Promise<void>;
   onSave: () => void | Promise<void>;
   onSaveAs: () => void | Promise<void>;
   onClose: () => void | Promise<void>;
@@ -26,6 +28,8 @@ type ToolbarProps = {
   onCloseWindow: () => void | Promise<void>;
   onEditorModeChange: (mode: EditorMode) => void;
   placeModeSwitchInAppBar: boolean;
+  recentDocuments: RecentDocument[];
+  showOpenRecent: boolean;
   showBrandInAppBar: boolean;
   showCustomWindowControls: boolean;
 };
@@ -36,6 +40,7 @@ export function Toolbar({
   tabs,
   onNew,
   onOpen,
+  onOpenRecent,
   onSave,
   onSaveAs,
   onClose,
@@ -43,6 +48,8 @@ export function Toolbar({
   onCloseWindow,
   onEditorModeChange,
   placeModeSwitchInAppBar,
+  recentDocuments,
+  showOpenRecent,
   showBrandInAppBar,
   showCustomWindowControls,
 }: ToolbarProps) {
@@ -129,6 +136,29 @@ export function Toolbar({
               <button type="button" onClick={() => void runMenuCommand(onOpen)}>
                 open
               </button>
+              {showOpenRecent ? (
+                <div className="command-submenu">
+                  <button type="button" disabled={recentDocuments.length === 0}>
+                    open recent
+                  </button>
+                  {recentDocuments.length > 0 ? (
+                    <div className="command-submenu-panel" role="menu">
+                      {recentDocuments.map((document) => (
+                        <button
+                          key={document.filePath}
+                          type="button"
+                          title={document.filePath}
+                          onClick={() =>
+                            void runMenuCommand(() => onOpenRecent(document))
+                          }
+                        >
+                          {document.fileName}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <button
                 type="button"
                 disabled={!canSave}

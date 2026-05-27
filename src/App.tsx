@@ -14,6 +14,7 @@ import {
   isRunningInTauri,
   listenForOpenedMarkdownFiles,
   openMarkdownFile,
+  openMarkdownFileAtPath,
   openStartupMarkdownFile,
   takeOpenedMarkdownFiles,
   saveMarkdownFile,
@@ -21,6 +22,12 @@ import {
   type OpenedMarkdownFile,
 } from "./services/fileService";
 import { isMacOs } from "./utils/platform";
+import {
+  addRecentDocument,
+  loadRecentDocuments,
+  saveRecentDocuments,
+  type RecentDocument,
+} from "./utils/recentDocuments";
 import { isUnsafeEmptyOverwrite } from "./utils/saveSafety";
 
 type EditorMode = "rich" | "source";
@@ -47,6 +54,7 @@ function App() {
   } = documentState;
   const [message, setMessage] = useState("Ready");
   const [editorMode, setEditorMode] = useState<EditorMode>("rich");
+  const [recentDocuments, setRecentDocuments] = useState<RecentDocument[]>([]);
   const hasCheckedStartupFile = useRef(false);
   const isDesktopApp = isRunningInTauri();
   const isMacDesktopApp = isDesktopApp && isMacOs();
@@ -63,6 +71,31 @@ function App() {
   useBeforeCloseWarning(hasDirtyDocuments);
 
   useEffect(() => {
+    if (isMacDesktopApp) {
+      setRecentDocuments(loadRecentDocuments());
+    }
+  }, [isMacDesktopApp]);
+
+  const rememberRecentDocument = useCallback(
+    (opened: Pick<OpenedMarkdownFile, "filePath" | "fileName">) => {
+      if (!isMacDesktopApp || !opened.filePath) {
+        return;
+      }
+
+      setRecentDocuments((currentRecentDocuments) => {
+        const nextRecentDocuments = addRecentDocument(currentRecentDocuments, {
+          filePath: opened.filePath!,
+          fileName: opened.fileName,
+        });
+
+        saveRecentDocuments(nextRecentDocuments);
+        return nextRecentDocuments;
+      });
+    },
+    [isMacDesktopApp],
+  );
+
+  useEffect(() => {
     if (!isDesktopApp || hasCheckedStartupFile.current) {
       return;
     }
@@ -76,12 +109,13 @@ function App() {
         }
 
         loadDocument(opened);
+        rememberRecentDocument(opened);
         setMessage(`Opened ${opened.fileName}`);
       })
       .catch((error) => {
         setMessage(getErrorMessage(error));
       });
-  }, [isDesktopApp, loadDocument]);
+  }, [isDesktopApp, loadDocument, rememberRecentDocument]);
 
   useEffect(() => {
     if (!isMacDesktopApp) {
@@ -93,6 +127,7 @@ function App() {
     const openFiles = (files: OpenedMarkdownFile[]) => {
       for (const file of files) {
         loadDocument(file);
+        rememberRecentDocument(file);
         setMessage(`Opened ${file.fileName}`);
       }
     };
@@ -136,7 +171,7 @@ function App() {
       isSubscribed = false;
       unlisten?.();
     };
-  }, [isMacDesktopApp, loadDocument]);
+  }, [isMacDesktopApp, loadDocument, rememberRecentDocument]);
 
   const confirmDiscard = async (
     targetDocument: Pick<OpenDocument, "fileName" | "isDirty"> = documentState,
@@ -174,6 +209,19 @@ function App() {
       }
 
       loadDocument(opened);
+      rememberRecentDocument(opened);
+      setMessage(`Opened ${opened.fileName}`);
+    } catch (error) {
+      setMessage(getErrorMessage(error));
+    }
+  };
+
+  const handleOpenRecent = async (recentDocument: RecentDocument) => {
+    try {
+      const opened = await openMarkdownFileAtPath(recentDocument.filePath);
+
+      loadDocument(opened);
+      rememberRecentDocument(opened);
       setMessage(`Opened ${opened.fileName}`);
     } catch (error) {
       setMessage(getErrorMessage(error));
@@ -210,6 +258,10 @@ function App() {
       }
 
       markSaved(markdown, result.filePath, result.fileName);
+      rememberRecentDocument({
+        filePath: result.filePath,
+        fileName: result.fileName,
+      });
       setMessage(`Saved as ${result.fileName}`);
     } catch (error) {
       setMessage(getErrorMessage(error));
@@ -341,6 +393,7 @@ function App() {
           }
           onNew={handleNew}
           onOpen={handleOpen}
+          onOpenRecent={handleOpenRecent}
           onSave={handleSave}
           onSaveAs={handleSaveAs}
           onClose={handleCloseActiveDocument}
@@ -348,6 +401,8 @@ function App() {
           onCloseWindow={handleCloseWindow}
           onEditorModeChange={handleEditorModeChange}
           placeModeSwitchInAppBar={isMacDesktopApp}
+          recentDocuments={recentDocuments}
+          showOpenRecent={isMacDesktopApp}
           showBrandInAppBar={isMacDesktopApp}
           showCustomWindowControls={isDesktopApp && !isMacDesktopApp}
         />
