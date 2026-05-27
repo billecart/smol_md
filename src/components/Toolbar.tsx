@@ -26,6 +26,7 @@ type ToolbarProps = {
   onCloseWindow: () => void | Promise<void>;
   onEditorModeChange: (mode: EditorMode) => void;
   placeModeSwitchInAppBar: boolean;
+  showBrandInAppBar: boolean;
   showCustomWindowControls: boolean;
 };
 
@@ -42,6 +43,7 @@ export function Toolbar({
   onCloseWindow,
   onEditorModeChange,
   placeModeSwitchInAppBar,
+  showBrandInAppBar,
   showCustomWindowControls,
 }: ToolbarProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -80,15 +82,16 @@ export function Toolbar({
   };
 
   const startWindowDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (!isDesktopApp || event.button !== 0 || event.detail > 1) {
+    if (!isDesktopApp || showBrandInAppBar || event.button !== 0 || event.detail > 1) {
       return;
     }
 
+    event.preventDefault();
     void getCurrentWindow().startDragging().catch(logWindowControlError);
   };
 
   const toggleWindowMaximize = () => {
-    if (!isDesktopApp) {
+    if (!isDesktopApp || showBrandInAppBar) {
       return;
     }
 
@@ -103,7 +106,9 @@ export function Toolbar({
     <>
       <header className="app-bar">
         <div className="app-menu" ref={menuRef}>
-          <img className="app-icon" src={appIcon} alt="" aria-hidden="true" />
+          {!showBrandInAppBar ? (
+            <img className="app-icon" src={appIcon} alt="" aria-hidden="true" />
+          ) : null}
           <button
             type="button"
             className="menu-trigger"
@@ -157,6 +162,9 @@ export function Toolbar({
             </nav>
           ) : null}
         </div>
+        {showBrandInAppBar ? (
+          <img className="app-bar-brand" src={smolLogo} alt="smol_md" />
+        ) : null}
         <div
           className="window-drag-region"
           data-tauri-drag-region
@@ -197,9 +205,11 @@ export function Toolbar({
       </header>
 
       <header className="tab-bar">
-        <div className="tab-brand">
-          <img className="brand-logo" src={smolLogo} alt="smol_md" />
-        </div>
+        {!showBrandInAppBar ? (
+          <div className="tab-brand">
+            <img className="brand-logo" src={smolLogo} alt="smol_md" />
+          </div>
+        ) : null}
 
         {tabs}
 

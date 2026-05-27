@@ -262,9 +262,13 @@ function App() {
     >
       <div className="top-chrome-hitbox" aria-hidden="true" />
       <div
-        className={
-          documents.length > 1 ? "top-chrome top-chrome-visible" : "top-chrome"
-        }
+        className={[
+          "top-chrome",
+          documents.length > 1 ? "top-chrome-visible" : "",
+          isMacDesktopApp ? "top-chrome-macos" : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
       >
         <Toolbar
           canSave={markdown !== originalMarkdown || Boolean(filePath)}
@@ -286,6 +290,7 @@ function App() {
           onCloseWindow={handleCloseWindow}
           onEditorModeChange={handleEditorModeChange}
           placeModeSwitchInAppBar={isMacDesktopApp}
+          showBrandInAppBar={isMacDesktopApp}
           showCustomWindowControls={isDesktopApp && !isMacDesktopApp}
         />
       </div>

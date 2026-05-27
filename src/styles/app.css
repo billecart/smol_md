@@ -100,6 +100,7 @@ input:focus-visible {
 }
 
 .app-bar {
+  position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
@@ -112,6 +113,17 @@ input:focus-visible {
 
 .app-shell-macos .app-bar {
   padding-left: 82px;
+}
+
+.app-shell-macos .top-chrome:not(.top-chrome-visible):has(.command-menu) .tab-bar {
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+}
+
+.app-shell-macos .tab-bar {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
 }
 
 .app-menu {
@@ -198,6 +210,19 @@ input:focus-visible {
   width: 14px;
   height: 14px;
   object-fit: contain;
+}
+
+.app-bar-brand {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  width: 78px;
+  max-width: 28vw;
+  height: auto;
+  object-fit: contain;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
 }
 
 .menu-trigger {
