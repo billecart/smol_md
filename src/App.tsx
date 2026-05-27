@@ -285,6 +285,7 @@ function App() {
           onCloseAll={handleCloseAllDocuments}
           onCloseWindow={handleCloseWindow}
           onEditorModeChange={handleEditorModeChange}
+          placeModeSwitchInAppBar={isMacDesktopApp}
           showCustomWindowControls={isDesktopApp && !isMacDesktopApp}
         />
       </div>

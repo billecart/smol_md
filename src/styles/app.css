@@ -126,6 +126,13 @@ input:focus-visible {
   min-width: 0;
 }
 
+.app-bar-controls {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  padding-right: 18px;
+}
+
 .window-controls {
   display: flex;
   align-self: stretch;
@@ -390,6 +397,11 @@ input:focus-visible {
   text-decoration: underline;
   text-decoration-color: var(--link-decoration-color);
   text-underline-offset: 4px;
+}
+
+.app-bar-controls .mode-switch {
+  align-items: center;
+  height: 32px;
 }
 
 .preview-note {

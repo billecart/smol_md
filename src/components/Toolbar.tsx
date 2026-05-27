@@ -25,6 +25,7 @@ type ToolbarProps = {
   onCloseAll: () => void | Promise<void>;
   onCloseWindow: () => void | Promise<void>;
   onEditorModeChange: (mode: EditorMode) => void;
+  placeModeSwitchInAppBar: boolean;
   showCustomWindowControls: boolean;
 };
 
@@ -40,6 +41,7 @@ export function Toolbar({
   onCloseAll,
   onCloseWindow,
   onEditorModeChange,
+  placeModeSwitchInAppBar,
   showCustomWindowControls,
 }: ToolbarProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -162,6 +164,14 @@ export function Toolbar({
           onDoubleClick={toggleWindowMaximize}
           onPointerDown={startWindowDrag}
         />
+        {placeModeSwitchInAppBar ? (
+          <div className="app-bar-controls">
+            <ModeSwitch
+              editorMode={editorMode}
+              onEditorModeChange={onEditorModeChange}
+            />
+          </div>
+        ) : null}
         {showCustomWindowControls ? (
           <div className="window-controls" aria-label="Window controls">
             <button type="button" onClick={minimizeWindow} title="Minimize">
@@ -193,28 +203,42 @@ export function Toolbar({
 
         {tabs}
 
-        <div className="toolbar-controls">
-          <div className="mode-switch" aria-label="Editor mode">
-            <button
-              type="button"
-              className={editorMode === "rich" ? "active" : ""}
-              aria-pressed={editorMode === "rich"}
-              onClick={() => onEditorModeChange("rich")}
-            >
-              Rich
-            </button>
-            <button
-              type="button"
-              className={editorMode === "source" ? "active" : ""}
-              aria-pressed={editorMode === "source"}
-              onClick={() => onEditorModeChange("source")}
-            >
-              Source
-            </button>
+        {!placeModeSwitchInAppBar ? (
+          <div className="toolbar-controls">
+            <ModeSwitch
+              editorMode={editorMode}
+              onEditorModeChange={onEditorModeChange}
+            />
           </div>
-        </div>
+        ) : null}
       </header>
     </>
+  );
+}
+
+function ModeSwitch({
+  editorMode,
+  onEditorModeChange,
+}: Pick<ToolbarProps, "editorMode" | "onEditorModeChange">) {
+  return (
+    <div className="mode-switch" aria-label="Editor mode">
+      <button
+        type="button"
+        className={editorMode === "rich" ? "active" : ""}
+        aria-pressed={editorMode === "rich"}
+        onClick={() => onEditorModeChange("rich")}
+      >
+        Rich
+      </button>
+      <button
+        type="button"
+        className={editorMode === "source" ? "active" : ""}
+        aria-pressed={editorMode === "source"}
+        onClick={() => onEditorModeChange("source")}
+      >
+        Source
+      </button>
+    </div>
   );
 }
 
