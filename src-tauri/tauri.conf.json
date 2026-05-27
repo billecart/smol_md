@@ -30,6 +30,7 @@
     "targets": "all",
     "publisher": "smol_md",
     "icon": [
+      "icons/icon.icns",
       "icons/icon.ico"
     ],
     "shortDescription": "Tiny Markdown editor",
