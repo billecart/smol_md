@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 
 export type OpenedMarkdownFile = {
@@ -54,6 +55,31 @@ export async function openStartupMarkdownFile(): Promise<
   return openMarkdownFileAtPath(filePath);
 }
 
+export async function takeOpenedMarkdownFiles(): Promise<OpenedMarkdownFile[]> {
+  if (!isRunningInTauri()) {
+    return [];
+  }
+
+  const filePaths = await invoke<string[]>("take_opened_markdown_file_paths");
+
+  return openMarkdownFilesAtPaths(filePaths);
+}
+
+export async function listenForOpenedMarkdownFiles(
+  onOpened: (files: OpenedMarkdownFile[]) => void,
+  onError: (error: unknown) => void,
+) {
+  if (!isRunningInTauri()) {
+    return () => undefined;
+  }
+
+  return listen<string[]>("opened-markdown-files", (event) => {
+    void openMarkdownFilesAtPaths(event.payload)
+      .then(onOpened)
+      .catch(onError);
+  });
+}
+
 export async function openMarkdownFileAtPath(
   filePath: string,
 ): Promise<OpenedMarkdownFile> {
@@ -66,6 +92,17 @@ export async function openMarkdownFileAtPath(
     fileName: getFileName(filePath),
     markdown,
   };
+}
+
+async function openMarkdownFilesAtPaths(filePaths: string[]) {
+  const uniqueFilePaths = [...new Set(filePaths)];
+  const files: OpenedMarkdownFile[] = [];
+
+  for (const filePath of uniqueFilePaths) {
+    files.push(await openMarkdownFileAtPath(filePath));
+  }
+
+  return files;
 }
 
 export async function saveMarkdownFile(

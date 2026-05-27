@@ -12,10 +12,13 @@ import type { OpenDocument } from "./hooks/useDocumentState";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import {
   isRunningInTauri,
+  listenForOpenedMarkdownFiles,
   openMarkdownFile,
   openStartupMarkdownFile,
+  takeOpenedMarkdownFiles,
   saveMarkdownFile,
   saveMarkdownFileAs,
+  type OpenedMarkdownFile,
 } from "./services/fileService";
 import { isMacOs } from "./utils/platform";
 import { isUnsafeEmptyOverwrite } from "./utils/saveSafety";
@@ -79,6 +82,61 @@ function App() {
         setMessage(getErrorMessage(error));
       });
   }, [isDesktopApp, loadDocument]);
+
+  useEffect(() => {
+    if (!isMacDesktopApp) {
+      return;
+    }
+
+    let isSubscribed = true;
+
+    const openFiles = (files: OpenedMarkdownFile[]) => {
+      for (const file of files) {
+        loadDocument(file);
+        setMessage(`Opened ${file.fileName}`);
+      }
+    };
+
+    void takeOpenedMarkdownFiles()
+      .then((files) => {
+        if (isSubscribed) {
+          openFiles(files);
+        }
+      })
+      .catch((error) => {
+        if (isSubscribed) {
+          setMessage(getErrorMessage(error));
+        }
+      });
+
+    let unlisten: (() => void) | undefined;
+
+    void listenForOpenedMarkdownFiles(
+      (files) => {
+        if (isSubscribed) {
+          openFiles(files);
+        }
+      },
+      (error) => {
+        if (isSubscribed) {
+          setMessage(getErrorMessage(error));
+        }
+      },
+    )
+      .then((listener) => {
+        unlisten = listener;
+      })
+      .catch((error) => {
+        if (isSubscribed) {
+          setMessage(getErrorMessage(error));
+        }
+      });
+
+    return () => {
+      isSubscribed = false;
+      unlisten?.();
+    };
+  }, [isMacDesktopApp, loadDocument]);
 
   const confirmDiscard = async (
     targetDocument: Pick<OpenDocument, "fileName" | "isDirty"> = documentState,

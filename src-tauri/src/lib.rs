@@ -2,11 +2,25 @@ use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{Emitter, Manager, RunEvent, Url};
+
+#[derive(Default)]
+struct OpenedMarkdownFiles(Mutex<Vec<String>>);
 
 #[tauri::command]
 fn get_startup_markdown_file_path() -> Option<String> {
     find_startup_markdown_file(std::env::args_os().skip(1))
+}
+
+#[tauri::command]
+fn take_opened_markdown_file_paths(state: tauri::State<OpenedMarkdownFiles>) -> Vec<String> {
+    state
+        .0
+        .lock()
+        .map(|mut paths| paths.drain(..).collect())
+        .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -124,16 +138,45 @@ fn markdown_path_from_arg(arg: OsString) -> Option<String> {
     None
 }
 
+fn markdown_path_from_url(url: &Url) -> Option<String> {
+    url.to_file_path()
+        .ok()
+        .and_then(|path| markdown_path_from_arg(path.into_os_string()))
+}
+
+fn handle_opened_urls(app: &tauri::AppHandle, urls: Vec<Url>) {
+    let paths: Vec<String> = urls.iter().filter_map(markdown_path_from_url).collect();
+
+    if paths.is_empty() {
+        return;
+    }
+
+    if let Some(state) = app.try_state::<OpenedMarkdownFiles>() {
+        if let Ok(mut opened_paths) = state.0.lock() {
+            opened_paths.extend(paths.clone());
+        }
+    }
+
+    let _ = app.emit("opened-markdown-files", paths);
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .manage(OpenedMarkdownFiles::default())
         .invoke_handler(tauri::generate_handler![
             get_startup_markdown_file_path,
+            take_opened_markdown_file_paths,
             read_markdown_file,
             write_markdown_file
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running smol_md");
+        .build(tauri::generate_context!())
+        .expect("error while building smol_md")
+        .run(|app, event| {
+            if let RunEvent::Opened { urls } = event {
+                handle_opened_urls(app, urls);
+            }
+        });
 }
 
 #[cfg(test)]
@@ -207,6 +250,23 @@ mod tests {
             find_startup_markdown_file(args),
             Some("C:\\Notes\\daily.markdown".to_string())
         );
+    }
+
+    #[test]
+    fn opened_url_accepts_markdown_file_urls() {
+        let url = Url::from_file_path("/tmp/notes.md").unwrap();
+
+        assert_eq!(
+            markdown_path_from_url(&url),
+            Some("/tmp/notes.md".to_string())
+        );
+    }
+
+    #[test]
+    fn opened_url_ignores_non_markdown_file_urls() {
+        let url = Url::from_file_path("/tmp/notes.txt").unwrap();
+
+        assert_eq!(markdown_path_from_url(&url), None);
     }
 
     fn unique_test_dir(name: &str) -> PathBuf {
