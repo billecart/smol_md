@@ -17,6 +17,7 @@ import {
   saveMarkdownFile,
   saveMarkdownFileAs,
 } from "./services/fileService";
+import { isMacOs } from "./utils/platform";
 import { isUnsafeEmptyOverwrite } from "./utils/saveSafety";
 
 type EditorMode = "rich" | "source";
@@ -45,6 +46,7 @@ function App() {
   const [editorMode, setEditorMode] = useState<EditorMode>("rich");
   const hasCheckedStartupFile = useRef(false);
   const isDesktopApp = isRunningInTauri();
+  const isMacDesktopApp = isDesktopApp && isMacOs();
 
   const title = useMemo(() => {
     const dirtyMark = isDirty ? "*" : "";
@@ -255,7 +257,9 @@ function App() {
   });
 
   return (
-    <main className="app-shell">
+    <main
+      className={isMacDesktopApp ? "app-shell app-shell-macos" : "app-shell"}
+    >
       <div className="top-chrome-hitbox" aria-hidden="true" />
       <div
         className={
@@ -281,6 +285,7 @@ function App() {
           onCloseAll={handleCloseAllDocuments}
           onCloseWindow={handleCloseWindow}
           onEditorModeChange={handleEditorModeChange}
+          showCustomWindowControls={isDesktopApp && !isMacDesktopApp}
         />
       </div>
 

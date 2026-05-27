@@ -110,6 +110,10 @@ input:focus-visible {
   backdrop-filter: blur(18px);
 }
 
+.app-shell-macos .app-bar {
+  padding-left: 82px;
+}
+
 .app-menu {
   position: relative;
   display: inline-flex;

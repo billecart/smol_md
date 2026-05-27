@@ -25,6 +25,7 @@ type ToolbarProps = {
   onCloseAll: () => void | Promise<void>;
   onCloseWindow: () => void | Promise<void>;
   onEditorModeChange: (mode: EditorMode) => void;
+  showCustomWindowControls: boolean;
 };
 
 export function Toolbar({
@@ -39,6 +40,7 @@ export function Toolbar({
   onCloseAll,
   onCloseWindow,
   onEditorModeChange,
+  showCustomWindowControls,
 }: ToolbarProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -160,7 +162,7 @@ export function Toolbar({
           onDoubleClick={toggleWindowMaximize}
           onPointerDown={startWindowDrag}
         />
-        {isDesktopApp ? (
+        {showCustomWindowControls ? (
           <div className="window-controls" aria-label="Window controls">
             <button type="button" onClick={minimizeWindow} title="Minimize">
               <Minus aria-hidden="true" size={14} />
