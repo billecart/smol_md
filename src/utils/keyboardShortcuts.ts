@@ -3,7 +3,10 @@ export type ShortcutAction =
   | "open"
   | "save"
   | "saveAs"
-  | "toggleSource";
+  | "toggleSource"
+  | "closeTab"
+  | "closeWindow"
+  | "find";
 
 type ShortcutEvent = Pick<
   KeyboardEvent,
@@ -24,6 +27,10 @@ export function getShortcutAction(event: ShortcutEvent): ShortcutAction | null {
       return event.shiftKey ? "saveAs" : "save";
     case "Backquote":
       return "toggleSource";
+    case "KeyW":
+      return event.shiftKey ? "closeWindow" : "closeTab";
+    case "KeyF":
+      return "find";
     default:
       return null;
   }

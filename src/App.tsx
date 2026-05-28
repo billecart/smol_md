@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { FindBar } from "./components/FindBar";
 import { RichEditor } from "./components/RichEditor";
 import { SourceEditor } from "./components/SourceEditor";
 import { StatusBar } from "./components/StatusBar";
@@ -9,6 +10,7 @@ import { Toolbar } from "./components/Toolbar";
 import { useBeforeCloseWarning } from "./hooks/useBeforeCloseWarning";
 import { useDocumentState } from "./hooks/useDocumentState";
 import type { OpenDocument } from "./hooks/useDocumentState";
+import { useInPageFind } from "./hooks/useInPageFind";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import {
   isRunningInTauri,
@@ -55,6 +57,7 @@ function App() {
   const [message, setMessage] = useState("Ready");
   const [editorMode, setEditorMode] = useState<EditorMode>("rich");
   const [recentDocuments, setRecentDocuments] = useState<RecentDocument[]>([]);
+  const find = useInPageFind();
   const hasCheckedStartupFile = useRef(false);
   const isDesktopApp = isRunningInTauri();
   const isMacDesktopApp = isDesktopApp && isMacOs();
@@ -358,18 +361,44 @@ function App() {
     });
   }, [markdown, setMarkdown]);
 
+  const handleFind = useCallback(() => {
+    if (editorMode !== "rich") return;
+    if (find.isOpen) {
+      // Refocus and select input
+      const input = document.querySelector<HTMLInputElement>(".find-bar-input");
+      input?.focus();
+      input?.select();
+      return;
+    }
+    find.open();
+  }, [editorMode, find]);
+
   useKeyboardShortcuts({
     onNew: handleNew,
     onOpen: handleOpen,
     onSave: handleSave,
     onSaveAs: handleSaveAs,
     onToggleSourceMode: toggleEditorMode,
+    onCloseTab: handleCloseActiveDocument,
+    onCloseWindow: handleCloseWindow,
+    onFind: handleFind,
   });
 
   return (
     <main
       className={isMacDesktopApp ? "app-shell app-shell-macos" : "app-shell"}
     >
+      {find.isOpen && editorMode === "rich" ? (
+        <FindBar
+          query={find.query}
+          matchCount={find.matchCount}
+          activeIndex={find.activeIndex}
+          onQueryChange={find.setQuery}
+          onNext={find.goNext}
+          onPrev={find.goPrev}
+          onClose={find.close}
+        />
+      ) : null}
       <div className="top-chrome-hitbox" aria-hidden="true" />
       <div
         className={[
@@ -421,6 +450,9 @@ function App() {
               key={activeDocumentId}
               value={markdown}
               onChange={setMarkdown}
+              findQuery={find.isOpen ? find.query : ""}
+              findActiveIndex={find.activeIndex}
+              onFindMatchCount={find.setMatchCount}
             />
           ) : (
             <SourceEditor

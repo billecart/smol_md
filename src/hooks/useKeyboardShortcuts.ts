@@ -7,6 +7,9 @@ type KeyboardShortcuts = {
   onSave: () => void;
   onSaveAs: () => void;
   onToggleSourceMode?: () => void;
+  onCloseTab?: () => void;
+  onCloseWindow?: () => void;
+  onFind?: () => void;
 };
 
 export function useKeyboardShortcuts({
@@ -15,6 +18,9 @@ export function useKeyboardShortcuts({
   onSave,
   onSaveAs,
   onToggleSourceMode,
+  onCloseTab,
+  onCloseWindow,
+  onFind,
 }: KeyboardShortcuts) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -36,10 +42,16 @@ export function useKeyboardShortcuts({
         onSaveAs();
       } else if (action === "toggleSource") {
         onToggleSourceMode?.();
+      } else if (action === "closeTab") {
+        onCloseTab?.();
+      } else if (action === "closeWindow") {
+        onCloseWindow?.();
+      } else if (action === "find") {
+        onFind?.();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onNew, onOpen, onSave, onSaveAs, onToggleSourceMode]);
+  }, [onNew, onOpen, onSave, onSaveAs, onToggleSourceMode, onCloseTab, onCloseWindow, onFind]);
 }

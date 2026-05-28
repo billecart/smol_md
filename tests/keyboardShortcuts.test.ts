@@ -49,3 +49,51 @@ test("source toggle uses the physical backquote key", () => {
     "toggleSource",
   );
 });
+
+test("Cmd+W closes active tab", () => {
+  assert.equal(
+    getShortcutAction({
+      code: "KeyW",
+      ctrlKey: false,
+      metaKey: true,
+      shiftKey: false,
+    }),
+    "closeTab",
+  );
+});
+
+test("Cmd+Shift+W closes window", () => {
+  assert.equal(
+    getShortcutAction({
+      code: "KeyW",
+      ctrlKey: false,
+      metaKey: true,
+      shiftKey: true,
+    }),
+    "closeWindow",
+  );
+});
+
+test("Cmd+F triggers find", () => {
+  assert.equal(
+    getShortcutAction({
+      code: "KeyF",
+      ctrlKey: false,
+      metaKey: true,
+      shiftKey: false,
+    }),
+    "find",
+  );
+});
+
+test("Ctrl+W closes tab on non-Mac", () => {
+  assert.equal(
+    getShortcutAction({
+      code: "KeyW",
+      ctrlKey: true,
+      metaKey: false,
+      shiftKey: false,
+    }),
+    "closeTab",
+  );
+});

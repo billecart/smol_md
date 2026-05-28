@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { CmdKey, Editor, defaultValueCtx, rootCtx } from "@milkdown/kit/core";
+import { CmdKey, Editor, defaultValueCtx, editorViewCtx, rootCtx } from "@milkdown/kit/core";
 import {
   commonmark,
   createCodeBlockCommand,
@@ -12,7 +12,8 @@ import {
   wrapInHeadingCommand,
   wrapInOrderedListCommand,
 } from "@milkdown/kit/preset/commonmark";
-import { Plugin, TextSelection } from "@milkdown/kit/prose/state";
+import { Plugin, PluginKey, TextSelection } from "@milkdown/kit/prose/state";
+import { Decoration, DecorationSet } from "@milkdown/kit/prose/view";
 import { history } from "@milkdown/kit/plugin/history";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import { $prose, callCommand, replaceAll } from "@milkdown/kit/utils";
@@ -23,6 +24,9 @@ import "@milkdown/kit/prose/view/style/prosemirror.css";
 type RichEditorProps = {
   value: string;
   onChange: (value: string) => void;
+  findQuery?: string;
+  findActiveIndex?: number;
+  onFindMatchCount?: (count: number) => void;
 };
 
 type ContextMenuPosition = {
@@ -104,6 +108,20 @@ const customEnterPlugin = $prose(
             return false;
           }
 
+          // Enter at the very start of a heading: insert empty paragraph above
+          if ($from.parentOffset === 0) {
+            const emptyParagraph = paragraph.createAndFill();
+            if (!emptyParagraph) return false;
+            const before = $from.before($from.depth);
+            const tr = state.tr.insert(before, emptyParagraph);
+            dispatch(
+              tr
+                .setSelection(TextSelection.near(tr.doc.resolve(before + 1)))
+                .scrollIntoView(),
+            );
+            return true;
+          }
+
           dispatch(
             state.tr
               .split($from.pos, 1, [{ type: paragraph }])
@@ -115,17 +133,150 @@ const customEnterPlugin = $prose(
     }),
 );
 
-export function RichEditor({ value, onChange }: RichEditorProps) {
+// Using $prose with ctx so we can call Milkdown commands from keymap.
+// prosemirror-keymap's "Mod-" prefix handles Cmd on Mac and Ctrl elsewhere.
+const formattingKeymapPlugin = $prose(
+  (ctx) =>
+    new Plugin({
+      props: {
+        handleKeyDown(view, event) {
+          const isMod = event.metaKey || event.ctrlKey;
+          if (!isMod || event.shiftKey || event.altKey) return false;
+
+          // Use event.code (physical key, layout-independent) so shortcuts
+          // work on Russian and other non-US keyboard layouts.
+          switch (event.code) {
+            case "KeyB":
+              event.preventDefault();
+              callCommand(toggleStrongCommand.key)(ctx);
+              return true;
+            case "KeyI":
+              event.preventDefault();
+              callCommand(toggleEmphasisCommand.key)(ctx);
+              return true;
+            case "KeyK": {
+              event.preventDefault();
+              // Save the current selection before the prompt dialog may blur
+              // the editor and reset it.
+              const savedSelection = view.state.selection;
+              const href = window.prompt("Link URL");
+              if (href?.trim()) {
+                if (!view.state.selection.eq(savedSelection)) {
+                  view.dispatch(
+                    view.state.tr.setSelection(savedSelection),
+                  );
+                }
+                callCommand(toggleLinkCommand.key, { href: href.trim() })(ctx);
+              }
+              return true;
+            }
+            case "Digit1":
+              event.preventDefault();
+              callCommand(wrapInHeadingCommand.key, 1)(ctx);
+              return true;
+            case "Digit2":
+              event.preventDefault();
+              callCommand(wrapInHeadingCommand.key, 2)(ctx);
+              return true;
+            case "Digit3":
+              event.preventDefault();
+              callCommand(wrapInHeadingCommand.key, 3)(ctx);
+              return true;
+          }
+          return false;
+        },
+      },
+    }),
+);
+
+// Option B: ProseMirror decoration plugin for in-page find.
+const findPluginKey = new PluginKey<{ query: string; activeIndex: number }>(
+  "smolFind",
+);
+
+const findDecorationPlugin = $prose(
+  () =>
+    new Plugin({
+      key: findPluginKey,
+      state: {
+        init() {
+          return { query: "", activeIndex: 0 };
+        },
+        apply(tr, prev) {
+          const meta = tr.getMeta(findPluginKey) as
+            | { query: string; activeIndex: number }
+            | undefined;
+          return meta ?? prev;
+        },
+      },
+      props: {
+        decorations(state) {
+          const { query, activeIndex } = findPluginKey.getState(state) ?? {
+            query: "",
+            activeIndex: 0,
+          };
+          if (!query) return DecorationSet.empty;
+
+          const decorations: Decoration[] = [];
+          const q = query.toLowerCase();
+          let matchIndex = 0;
+
+          state.doc.descendants((node, pos) => {
+            if (!node.isText || !node.text) return;
+            const text = node.text.toLowerCase();
+            let offset = 0;
+            while (true) {
+              const idx = text.indexOf(q, offset);
+              if (idx === -1) break;
+              const cls =
+                matchIndex === activeIndex
+                  ? "smol-find-match smol-find-match-active"
+                  : "smol-find-match";
+              decorations.push(
+                Decoration.inline(pos + idx, pos + idx + q.length, {
+                  class: cls,
+                }),
+              );
+              matchIndex++;
+              offset = idx + q.length;
+            }
+          });
+
+          return DecorationSet.create(state.doc, decorations);
+        },
+      },
+    }),
+);
+
+export function RichEditor({
+  value,
+  onChange,
+  findQuery = "",
+  findActiveIndex = 0,
+  onFindMatchCount,
+}: RichEditorProps) {
   const normalizedValue = normalizeMarkdownLineBreaks(value);
 
   return (
     <MilkdownProvider>
-      <RichEditorInner value={normalizedValue} onChange={onChange} />
+      <RichEditorInner
+        value={normalizedValue}
+        onChange={onChange}
+        findQuery={findQuery}
+        findActiveIndex={findActiveIndex}
+        onFindMatchCount={onFindMatchCount}
+      />
     </MilkdownProvider>
   );
 }
 
-function RichEditorInner({ value, onChange }: RichEditorProps) {
+function RichEditorInner({
+  value,
+  onChange,
+  findQuery,
+  findActiveIndex,
+  onFindMatchCount,
+}: RichEditorProps) {
   const lastKnownMarkdown = useRef(value);
   const isSyncingFromApp = useRef(false);
   const [contextMenuPosition, setContextMenuPosition] =
@@ -147,6 +298,8 @@ function RichEditorInner({ value, onChange }: RichEditorProps) {
           });
         })
         .use(customEnterPlugin)
+        .use(formattingKeymapPlugin)
+        .use(findDecorationPlugin)
         .use(commonmark)
         .use(history)
         .use(listener),
@@ -171,6 +324,55 @@ function RichEditorInner({ value, onChange }: RichEditorProps) {
       isSyncingFromApp.current = false;
     });
   }, [get, loading, value]);
+
+  // Sync find query + active index into the ProseMirror decoration plugin.
+  useEffect(() => {
+    if (loading) return;
+    const editor = get();
+    if (!editor) return;
+
+    editor.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      // Compute match count while dispatching so we do one doc walk.
+      let count = 0;
+      if (findQuery) {
+        const q = findQuery.toLowerCase();
+        view.state.doc.descendants((node) => {
+          if (!node.isText || !node.text) return;
+          const text = node.text.toLowerCase();
+          let offset = 0;
+          while (true) {
+            const idx = text.indexOf(q, offset);
+            if (idx === -1) break;
+            count++;
+            offset = idx + q.length;
+          }
+        });
+      }
+      onFindMatchCount?.(count);
+      view.dispatch(
+        view.state.tr.setMeta(findPluginKey, {
+          query: findQuery ?? "",
+          activeIndex: findActiveIndex ?? 0,
+        }),
+      );
+    });
+  }, [loading, get, findQuery, findActiveIndex, onFindMatchCount]);
+
+  // Scroll active match into view when activeIndex changes.
+  useEffect(() => {
+    if (loading || !findQuery) return;
+    const editor = get();
+    if (!editor) return;
+
+    editor.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      const activeEl = view.dom.querySelector<HTMLElement>(
+        ".smol-find-match-active",
+      );
+      activeEl?.scrollIntoView({ block: "nearest" });
+    });
+  }, [loading, get, findActiveIndex, findQuery]);
 
   useEffect(() => {
     if (!contextMenuPosition) {
