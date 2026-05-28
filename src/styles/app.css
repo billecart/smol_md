@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&display=swap");
 
 :root {
   --background-primary: #f3f3f2;
@@ -739,8 +739,8 @@ input:focus-visible {
 
 .rich-editor .ProseMirror mark {
   padding: 0.05em 0.22em;
-  border-radius: 4px;
-  background: rgba(0, 66, 37, 0.1);
+  border-radius: 3px;
+  background: rgba(204, 255, 0, 0.45);
   color: inherit;
 }
 
@@ -766,6 +766,26 @@ input:focus-visible {
   margin: 2.4em 0;
   border: 0;
   background: var(--border-subtle);
+}
+
+.rich-editor .ProseMirror del {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.rich-editor .ProseMirror li[data-item-type="task"] {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5em;
+  list-style: none;
+  margin-left: -1.6em;
+}
+
+.rich-editor .ProseMirror li[data-item-type="task"] input[type="checkbox"] {
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--color-accent);
+  cursor: pointer;
 }
 
 .status-bar {

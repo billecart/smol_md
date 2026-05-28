@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { CmdKey, Editor, defaultValueCtx, editorViewCtx, rootCtx } from "@milkdown/kit/core";
+import {
+  CmdKey,
+  Editor,
+  defaultValueCtx,
+  editorViewCtx,
+  remarkStringifyOptionsCtx,
+  rootCtx,
+} from "@milkdown/kit/core";
 import {
   commonmark,
   createCodeBlockCommand,
@@ -12,12 +19,24 @@ import {
   wrapInHeadingCommand,
   wrapInOrderedListCommand,
 } from "@milkdown/kit/preset/commonmark";
+import { gfm, toggleStrikethroughCommand } from "@milkdown/kit/preset/gfm";
+import { toggleMark } from "@milkdown/kit/prose/commands";
+import { markRule } from "@milkdown/kit/prose";
 import { Plugin, PluginKey, TextSelection } from "@milkdown/kit/prose/state";
 import { Decoration, DecorationSet } from "@milkdown/kit/prose/view";
 import { history } from "@milkdown/kit/plugin/history";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
-import { $prose, callCommand, replaceAll } from "@milkdown/kit/utils";
+import {
+  $command,
+  $inputRule,
+  $markSchema,
+  $prose,
+  $remark,
+  callCommand,
+  replaceAll,
+} from "@milkdown/kit/utils";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
+import { SKIP, visit } from "unist-util-visit";
 import { normalizeMarkdownLineBreaks } from "../utils/markdown";
 import "@milkdown/kit/prose/view/style/prosemirror.css";
 
@@ -134,17 +153,24 @@ const customEnterPlugin = $prose(
 );
 
 // Using $prose with ctx so we can call Milkdown commands from keymap.
-// prosemirror-keymap's "Mod-" prefix handles Cmd on Mac and Ctrl elsewhere.
+// Uses event.code (layout-independent) so shortcuts work on Russian keyboards.
 const formattingKeymapPlugin = $prose(
   (ctx) =>
     new Plugin({
       props: {
         handleKeyDown(view, event) {
           const isMod = event.metaKey || event.ctrlKey;
-          if (!isMod || event.shiftKey || event.altKey) return false;
+          if (!isMod) return false;
 
-          // Use event.code (physical key, layout-independent) so shortcuts
-          // work on Russian and other non-US keyboard layouts.
+          // Mod+Shift+S → strikethrough (only Shift combo we handle)
+          if (event.code === "KeyS" && event.shiftKey && !event.altKey) {
+            event.preventDefault();
+            callCommand(toggleStrikethroughCommand.key)(ctx);
+            return true;
+          }
+
+          if (event.shiftKey || event.altKey) return false;
+
           switch (event.code) {
             case "KeyB":
               event.preventDefault();
@@ -187,6 +213,78 @@ const formattingKeymapPlugin = $prose(
         },
       },
     }),
+);
+
+// Highlight mark: ==text== syntax rendered as <mark>.
+// The remark plugin transforms ==text== text nodes into highlight MDAST nodes
+// during parsing; the stringify handler converts them back to ==text==.
+function remarkHighlightTransformer() {
+  return (tree: Parameters<typeof visit>[0]) => {
+    visit(tree, "text", (node: any, index: any, parent: any) => {
+      if (index == null || !parent?.children) return;
+      const value: string = node.value;
+      const re = /==([^=\n]+)==/g;
+      if (!re.test(value)) return;
+      re.lastIndex = 0;
+
+      const newNodes: any[] = [];
+      let last = 0;
+      let match: RegExpExecArray | null;
+      while ((match = re.exec(value)) !== null) {
+        if (match.index > last) {
+          newNodes.push({ type: "text", value: value.slice(last, match.index) });
+        }
+        newNodes.push({
+          type: "highlight",
+          children: [{ type: "text", value: match[1] }],
+        });
+        last = match.index + match[0].length;
+      }
+      if (last < value.length) {
+        newNodes.push({ type: "text", value: value.slice(last) });
+      }
+
+      parent.children.splice(index, 1, ...newNodes);
+      return [SKIP, index + newNodes.length] as const;
+    });
+  };
+}
+
+const highlightRemarkPlugin = $remark(
+  "highlight",
+  () => remarkHighlightTransformer,
+);
+
+const highlightSchema = $markSchema("highlight", () => ({
+  parseDOM: [{ tag: "mark" }],
+  toDOM: () => ["mark" as const, 0 as const],
+  parseMarkdown: {
+    match: (node: any) => node.type === "highlight",
+    runner: (state: any, node: any, markType: any) => {
+      state.openMark(markType);
+      state.next(node.children);
+      state.closeMark(markType);
+    },
+  },
+  toMarkdown: {
+    match: (mark: any) => mark.type.name === "highlight",
+    runner: (state: any, mark: any) => {
+      state.withMark(mark, "highlight");
+    },
+  },
+}));
+
+const highlightInputRule = $inputRule((ctx) =>
+  markRule(/(?:^|[^=])==([^=\n]+)==$/, highlightSchema.type(ctx), {
+    updateCaptured: ({ fullMatch, group }) => ({
+      fullMatch: fullMatch.startsWith("=") ? fullMatch : fullMatch.slice(1),
+      group,
+    }),
+  }),
+);
+
+const toggleHighlightCommand = $command("ToggleHighlight", (ctx) => () =>
+  toggleMark(highlightSchema.type(ctx)),
 );
 
 // Option B: ProseMirror decoration plugin for in-page find.
@@ -296,11 +394,34 @@ function RichEditorInner({
               onChange(normalizedMarkdown);
             }
           });
+          // Register ==text== serializer for the highlight MDAST node type.
+          const stringifyOpts = ctx.get(remarkStringifyOptionsCtx);
+          ctx.set(remarkStringifyOptionsCtx, {
+            ...stringifyOpts,
+            handlers: {
+              ...(stringifyOpts as any).handlers,
+              highlight: (node: any, _parent: any, state: any, info: any) => {
+                const exit = state.enter("highlight");
+                const value = state.containerPhrasing(node, {
+                  before: "=",
+                  after: "=",
+                  ...info,
+                });
+                exit();
+                return `==${value}==`;
+              },
+            },
+          });
         })
+        .use(highlightRemarkPlugin)
+        .use(highlightSchema)
+        .use(highlightInputRule)
+        .use(toggleHighlightCommand)
         .use(customEnterPlugin)
         .use(formattingKeymapPlugin)
         .use(findDecorationPlugin)
         .use(commonmark)
+        .use(gfm)
         .use(history)
         .use(listener),
     [],
@@ -423,7 +544,7 @@ function RichEditorInner({
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const menuWidth = 184;
-    const menuHeight = 340;
+    const menuHeight = 420;
 
     setContextMenuPosition({
       x: Math.min(event.clientX, window.innerWidth - menuWidth - 8),
@@ -465,9 +586,23 @@ function RichEditorInner({
           <button
             type="button"
             role="menuitem"
+            onClick={() => runCommand(toggleStrikethroughCommand)}
+          >
+            Strikethrough
+          </button>
+          <button
+            type="button"
+            role="menuitem"
             onClick={() => runCommand(toggleInlineCodeCommand)}
           >
             Inline code
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => runCommand(toggleHighlightCommand)}
+          >
+            Highlight
           </button>
           <span className="editor-context-divider" aria-hidden="true" />
           <button
