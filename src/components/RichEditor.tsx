@@ -23,9 +23,10 @@ import { gfm, toggleStrikethroughCommand } from "@milkdown/kit/preset/gfm";
 import { toggleMark } from "@milkdown/kit/prose/commands";
 import { markRule } from "@milkdown/kit/prose";
 import { Plugin, PluginKey, TextSelection } from "@milkdown/kit/prose/state";
-import { Decoration, DecorationSet } from "@milkdown/kit/prose/view";
+import { Decoration, DecorationSet, EditorView } from "@milkdown/kit/prose/view";
 import { history } from "@milkdown/kit/plugin/history";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
+import { keymap } from "@milkdown/kit/prose/keymap";
 import {
   $command,
   $inputRule,
@@ -39,6 +40,28 @@ import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { SKIP, visit } from "unist-util-visit";
 import { normalizeMarkdownLineBreaks } from "../utils/markdown";
 import "@milkdown/kit/prose/view/style/prosemirror.css";
+
+// Module-level state for the link dialog (used by formattingKeymap and component).
+type LinkDialogCoords = { x: number; y: number };
+let _linkDialogCoords: LinkDialogCoords | null = null;
+let _linkDialogOnSubmit: ((href: string) => void) | null = null;
+let _linkDialogSync: (() => void) | null = null;
+
+function openLinkDialog(
+  view: EditorView,
+  onSubmit: (href: string) => void,
+) {
+  const coords = view.coordsAtPos(view.state.selection.from);
+  _linkDialogCoords = { x: Math.round(coords.left), y: Math.round(coords.bottom) + 4 };
+  _linkDialogOnSubmit = onSubmit;
+  _linkDialogSync?.();
+}
+
+function closeLinkDialog() {
+  _linkDialogCoords = null;
+  _linkDialogOnSubmit = null;
+  _linkDialogSync?.();
+}
 
 type RichEditorProps = {
   value: string;
@@ -152,67 +175,40 @@ const customEnterPlugin = $prose(
     }),
 );
 
-// Using $prose with ctx so we can call Milkdown commands from keymap.
-// Uses event.code (layout-independent) so shortcuts work on Russian keyboards.
-const formattingKeymapPlugin = $prose(
-  (ctx) =>
-    new Plugin({
-      props: {
-        handleKeyDown(view, event) {
-          const isMod = event.metaKey || event.ctrlKey;
-          if (!isMod) return false;
-
-          // Mod+Shift+S → strikethrough (only Shift combo we handle)
-          if (event.code === "KeyS" && event.shiftKey && !event.altKey) {
-            event.preventDefault();
-            callCommand(toggleStrikethroughCommand.key)(ctx);
-            return true;
-          }
-
-          if (event.shiftKey || event.altKey) return false;
-
-          switch (event.code) {
-            case "KeyB":
-              event.preventDefault();
-              callCommand(toggleStrongCommand.key)(ctx);
-              return true;
-            case "KeyI":
-              event.preventDefault();
-              callCommand(toggleEmphasisCommand.key)(ctx);
-              return true;
-            case "KeyK": {
-              event.preventDefault();
-              // Save the current selection before the prompt dialog may blur
-              // the editor and reset it.
-              const savedSelection = view.state.selection;
-              const href = window.prompt("Link URL");
-              if (href?.trim()) {
-                if (!view.state.selection.eq(savedSelection)) {
-                  view.dispatch(
-                    view.state.tr.setSelection(savedSelection),
-                  );
-                }
-                callCommand(toggleLinkCommand.key, { href: href.trim() })(ctx);
-              }
-              return true;
-            }
-            case "Digit1":
-              event.preventDefault();
-              callCommand(wrapInHeadingCommand.key, 1)(ctx);
-              return true;
-            case "Digit2":
-              event.preventDefault();
-              callCommand(wrapInHeadingCommand.key, 2)(ctx);
-              return true;
-            case "Digit3":
-              event.preventDefault();
-              callCommand(wrapInHeadingCommand.key, 3)(ctx);
-              return true;
-          }
-          return false;
-        },
-      },
-    }),
+const formattingKeymap = $prose((ctx) =>
+  keymap({
+    "Mod-b": () => {
+      callCommand(toggleStrongCommand.key)(ctx);
+      return true;
+    },
+    "Mod-i": () => {
+      callCommand(toggleEmphasisCommand.key)(ctx);
+      return true;
+    },
+    "Mod-k": () => {
+      const view = ctx.get(editorViewCtx);
+      openLinkDialog(view, (href) => {
+        callCommand(toggleLinkCommand.key, { href })(ctx);
+      });
+      return true;
+    },
+    "Mod-1": () => {
+      callCommand(wrapInHeadingCommand.key, 1)(ctx);
+      return true;
+    },
+    "Mod-2": () => {
+      callCommand(wrapInHeadingCommand.key, 2)(ctx);
+      return true;
+    },
+    "Mod-3": () => {
+      callCommand(wrapInHeadingCommand.key, 3)(ctx);
+      return true;
+    },
+    "Mod-Shift-s": () => {
+      callCommand(toggleStrikethroughCommand.key)(ctx);
+      return true;
+    },
+  }),
 );
 
 // Highlight mark: ==text== syntax rendered as <mark>.
@@ -379,6 +375,13 @@ function RichEditorInner({
   const isSyncingFromApp = useRef(false);
   const [contextMenuPosition, setContextMenuPosition] =
     useState<ContextMenuPosition | null>(null);
+  const [linkDialogPos, setLinkDialogPos] = useState<LinkDialogCoords | null>(null);
+  const linkInputRef = useRef<HTMLInputElement>(null);
+
+  // Sync module-level link dialog state into React state.
+  _linkDialogSync = () => {
+    setLinkDialogPos(_linkDialogCoords);
+  };
 
   const { loading, get } = useEditor(
     (root) =>
@@ -418,7 +421,7 @@ function RichEditorInner({
         .use(highlightInputRule)
         .use(toggleHighlightCommand)
         .use(customEnterPlugin)
-        .use(formattingKeymapPlugin)
+        .use(formattingKeymap)
         .use(findDecorationPlugin)
         .use(commonmark)
         .use(gfm)
@@ -520,6 +523,25 @@ function RichEditorInner({
     };
   }, [contextMenuPosition]);
 
+  useEffect(() => {
+    if (!linkDialogPos) return;
+    linkInputRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closeLinkDialog();
+    };
+    const onDown = (e: Event) => {
+      if (!(e.target as HTMLElement)?.closest?.(".link-dialog")) {
+        closeLinkDialog();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("mousedown", onDown);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("mousedown", onDown);
+    };
+  }, [linkDialogPos]);
+
   const runCommand = <T,>(command: { key: CmdKey<T> }, payload?: T) => {
     const editor = get();
 
@@ -532,13 +554,15 @@ function RichEditorInner({
   };
 
   const promptForLink = () => {
-    const href = window.prompt("Link URL");
-
-    if (!href?.trim()) {
-      return;
-    }
-
-    runCommand(toggleLinkCommand, { href: href.trim() });
+    setContextMenuPosition(null);
+    const editor = get();
+    if (!editor) return;
+    editor.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      openLinkDialog(view, (href) => {
+        callCommand(toggleLinkCommand.key, { href })(ctx);
+      });
+    });
   };
 
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
@@ -657,6 +681,35 @@ function RichEditorInner({
           </button>
           <button type="button" role="menuitem" onClick={promptForLink}>
             Link
+          </button>
+        </div>
+      ) : null}
+      {linkDialogPos ? (
+        <div
+          className="link-dialog"
+          style={{ left: linkDialogPos.x, top: linkDialogPos.y }}
+        >
+          <input
+            ref={linkInputRef}
+            type="text"
+            placeholder="https://example.com"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.currentTarget.value.trim()) {
+                _linkDialogOnSubmit?.(e.currentTarget.value.trim());
+                closeLinkDialog();
+              }
+            }}
+          />
+          <button
+            onClick={() => {
+              const val = linkInputRef.current?.value.trim();
+              if (val) {
+                _linkDialogOnSubmit?.(val);
+                closeLinkDialog();
+              }
+            }}
+          >
+            OK
           </button>
         </div>
       ) : null}

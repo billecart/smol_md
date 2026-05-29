@@ -541,6 +541,58 @@ input:focus-visible {
   background: var(--border-subtle);
 }
 
+.link-dialog {
+  position: fixed;
+  z-index: 35;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 7px;
+  background: rgba(236, 236, 234, 0.97);
+  box-shadow: 0 14px 36px rgba(22, 22, 14, 0.13);
+  backdrop-filter: blur(18px);
+}
+
+.link-dialog input {
+  width: 200px;
+  height: 26px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 5px;
+  background: rgba(22, 22, 14, 0.04);
+  color: var(--text-normal);
+  font-family: var(--font-editor);
+  font-size: 13px;
+  outline: none;
+}
+
+.link-dialog input::placeholder {
+  color: var(--text-faint);
+}
+
+.link-dialog input:focus {
+  background: rgba(22, 22, 14, 0.07);
+}
+
+.link-dialog button {
+  display: grid;
+  place-items: center;
+  min-width: 32px;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 5px;
+  background: var(--color-accent);
+  color: #fff;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.link-dialog button:hover {
+  opacity: 0.85;
+}
+
 .rich-editor {
   min-height: inherit;
 }
