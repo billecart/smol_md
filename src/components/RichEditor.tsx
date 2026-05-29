@@ -8,23 +8,24 @@ import {
   rootCtx,
 } from "@milkdown/kit/core";
 import {
+  blockquoteSchema,
+  bulletListSchema,
+  codeBlockSchema,
   commonmark,
-  createCodeBlockCommand,
+  orderedListSchema,
   toggleEmphasisCommand,
   toggleInlineCodeCommand,
   toggleLinkCommand,
   toggleStrongCommand,
-  wrapInBulletListCommand,
-  wrapInBlockquoteCommand,
   wrapInHeadingCommand,
-  wrapInOrderedListCommand,
 } from "@milkdown/kit/preset/commonmark";
 import { gfm, toggleStrikethroughCommand } from "@milkdown/kit/preset/gfm";
-import { toggleMark } from "@milkdown/kit/prose/commands";
+import { lift, setBlockType, toggleMark, wrapIn } from "@milkdown/kit/prose/commands";
 import { markRule } from "@milkdown/kit/prose";
-import { Plugin, PluginKey, TextSelection } from "@milkdown/kit/prose/state";
+import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from "@milkdown/kit/prose/state";
 import { Decoration, DecorationSet, EditorView } from "@milkdown/kit/prose/view";
 import { history } from "@milkdown/kit/plugin/history";
+import { wrapInList } from "@milkdown/kit/prose/schema-list";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import { keymap } from "@milkdown/kit/prose/keymap";
 import {
@@ -61,6 +62,16 @@ function closeLinkDialog() {
   _linkDialogCoords = null;
   _linkDialogOnSubmit = null;
   _linkDialogSync?.();
+}
+
+function runBlockFormat(
+  view: EditorView,
+  cmd: (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean,
+) {
+  if (cmd(view.state, view.dispatch)) return;
+
+  lift(view.state, view.dispatch);
+  cmd(view.state, view.dispatch);
 }
 
 type RichEditorProps = {
@@ -654,28 +665,56 @@ function RichEditorInner({
           <button
             type="button"
             role="menuitem"
-            onClick={() => runCommand(wrapInBulletListCommand)}
+            onClick={() => {
+              const editor = get();
+              if (!editor) return;
+              editor.action((ctx) => {
+                runBlockFormat(ctx.get(editorViewCtx), wrapInList(bulletListSchema.type(ctx)));
+              });
+              setContextMenuPosition(null);
+            }}
           >
             Bullet list
           </button>
           <button
             type="button"
             role="menuitem"
-            onClick={() => runCommand(wrapInOrderedListCommand)}
+            onClick={() => {
+              const editor = get();
+              if (!editor) return;
+              editor.action((ctx) => {
+                runBlockFormat(ctx.get(editorViewCtx), wrapInList(orderedListSchema.type(ctx)));
+              });
+              setContextMenuPosition(null);
+            }}
           >
             Numbered list
           </button>
           <button
             type="button"
             role="menuitem"
-            onClick={() => runCommand(wrapInBlockquoteCommand)}
+            onClick={() => {
+              const editor = get();
+              if (!editor) return;
+              editor.action((ctx) => {
+                runBlockFormat(ctx.get(editorViewCtx), wrapIn(blockquoteSchema.type(ctx)));
+              });
+              setContextMenuPosition(null);
+            }}
           >
             Blockquote
           </button>
           <button
             type="button"
             role="menuitem"
-            onClick={() => runCommand(createCodeBlockCommand)}
+            onClick={() => {
+              const editor = get();
+              if (!editor) return;
+              editor.action((ctx) => {
+                runBlockFormat(ctx.get(editorViewCtx), setBlockType(codeBlockSchema.type(ctx)));
+              });
+              setContextMenuPosition(null);
+            }}
           >
             Code block
           </button>
