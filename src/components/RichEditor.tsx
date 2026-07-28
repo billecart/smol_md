@@ -40,6 +40,8 @@ import {
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { SKIP, visit } from "unist-util-visit";
 import { normalizeMarkdownLineBreaks } from "../utils/markdown";
+import { TableOfContents } from "./TableOfContents";
+import { useTableOfContents, generateTocMarkdown, type TocEntry } from "../hooks/useTableOfContents";
 import "@milkdown/kit/prose/view/style/prosemirror.css";
 
 // Module-level state for the link dialog (used by formattingKeymap and component).
@@ -389,6 +391,33 @@ function RichEditorInner({
   const [linkDialogPos, setLinkDialogPos] = useState<LinkDialogCoords | null>(null);
   const linkInputRef = useRef<HTMLInputElement>(null);
 
+  const tocEntries = useTableOfContents(value);
+
+  const handleNavigateToc = (entry: TocEntry) => {
+    const editor = get();
+    if (!editor) return;
+    editor.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      let pos = -1;
+      view.state.doc.descendants((node, p) => {
+        if (node.type.name === 'heading' && node.textContent === entry.text) {
+          pos = p;
+          return false;
+        }
+      });
+      if (pos !== -1) {
+        const domNode = view.nodeDOM(pos) as HTMLElement;
+        if (domNode && domNode.scrollIntoView) {
+          domNode.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+          const { tr } = view.state;
+          const selection = TextSelection.create(view.state.doc, pos);
+          view.dispatch(tr.setSelection(selection).scrollIntoView());
+        }
+      }
+    });
+  };
+
   // Sync module-level link dialog state into React state.
   _linkDialogSync = () => {
     setLinkDialogPos(_linkDialogCoords);
@@ -593,6 +622,12 @@ function RichEditorInner({
         {loading ? <p className="editor-loading">Loading editor...</p> : null}
         <Milkdown />
       </div>
+      
+      <TableOfContents 
+        entries={tocEntries} 
+        onNavigate={handleNavigateToc} 
+      />
+
       {contextMenuPosition ? (
         <div
           className="editor-context-menu"

@@ -503,6 +503,7 @@ input:focus-visible {
 
 .rich-editor-shell {
   position: relative;
+  overflow-x: hidden;
 }
 
 .editor-context-menu {
@@ -965,4 +966,130 @@ input:focus-visible {
   .counter-toggle {
     grid-column: auto;
   }
+}
+
+/* --- Table of Contents Panel --- */
+
+.toc-panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  height: 100%;
+  z-index: 100;
+  transition: right 0.3s ease-in-out;
+  display: flex;
+}
+
+.toc-panel-collapsed {
+  right: -300px;
+}
+
+.toc-panel-expanded {
+  right: 0;
+}
+
+.toc-trigger-area {
+  position: absolute;
+  left: -32px;
+  top: 0;
+  width: 32px;
+  height: 100%;
+  /* No background or indicator, completely invisible */
+  z-index: 10;
+}
+
+.toc-panel-content {
+  width: 280px;
+  background-color: var(--bg-primary);
+  border-left: 1px solid var(--border-color);
+  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.toc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.toc-header h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
+.toc-insert-btn {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-normal);
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.toc-insert-btn:hover:not(:disabled) {
+  background: var(--bg-tertiary);
+  border-color: var(--text-muted);
+}
+
+.toc-insert-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.toc-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.toc-item {
+  margin-bottom: 6px;
+}
+
+.toc-level-1 { margin-left: 0; }
+.toc-level-2 { margin-left: 12px; }
+.toc-level-3 { margin-left: 24px; }
+.toc-level-4 { margin-left: 36px; }
+.toc-level-5 { margin-left: 48px; }
+.toc-level-6 { margin-left: 60px; }
+
+.toc-link {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  line-height: 1.4;
+  transition: color 0.2s;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.toc-link:hover {
+  color: var(--text-normal);
+  text-decoration: underline;
+  text-decoration-color: var(--link-decoration-color);
+  text-underline-offset: 2px;
+}
+
+.toc-empty {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 32px;
 }
