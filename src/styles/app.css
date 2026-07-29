@@ -502,8 +502,6 @@ input:focus-visible {
 }
 
 .rich-editor-shell {
-  position: relative;
-  overflow-x: hidden;
 }
 
 .editor-context-menu {
@@ -971,11 +969,11 @@ input:focus-visible {
 /* --- Table of Contents Panel --- */
 
 .toc-panel {
-  position: absolute;
+  position: fixed;
   top: 0;
   right: 0;
-  height: 100%;
-  z-index: 100;
+  height: 100vh;
+  z-index: 10;
   transition: right 0.3s ease-in-out;
   display: flex;
 }
@@ -989,11 +987,11 @@ input:focus-visible {
 }
 
 .toc-trigger-area {
-  position: absolute;
-  left: -32px;
+  position: fixed;
+  right: 0;
   top: 0;
   width: 32px;
-  height: 100%;
+  height: 100vh;
   /* No background or indicator, completely invisible */
   z-index: 10;
 }
@@ -1005,7 +1003,7 @@ input:focus-visible {
   box-shadow: -4px 0 12px rgba(0, 0, 0, 0.05);
   display: flex;
   flex-direction: column;
-  padding: 16px;
+  padding: 96px 16px 16px;
   overflow-y: auto;
 }
 
