@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,700&display=swap");
 
 :root {
   --background-primary: #f3f3f2;
@@ -13,7 +13,7 @@
   --border-subtle: rgba(22, 22, 14, 0.12);
   --selection-background: rgba(0, 66, 37, 0.16);
   --highlight-background: rgba(0, 66, 37, 0.08);
-  --font-ui: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-editor: "IBM Plex Mono", "Cascadia Mono", "Cascadia Code", "Roboto Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   --editor-line-height: 1.75;
   --editor-font-size: 16px;
@@ -968,43 +968,56 @@ input:focus-visible {
 
 /* --- Table of Contents Panel --- */
 
-.toc-panel {
+.toc-wrapper {
   position: fixed;
-  top: 0;
+  top: 96px; /* Below the top chrome */
   right: 0;
-  height: 100vh;
-  z-index: 10;
-  transition: right 0.3s ease-in-out;
-  display: flex;
-}
-
-.toc-panel-collapsed {
-  right: -300px;
-}
-
-.toc-panel-expanded {
-  right: 0;
+  height: calc(100vh - 120px);
+  width: 320px;
+  z-index: 100;
+  pointer-events: none;
 }
 
 .toc-trigger-area {
-  position: fixed;
-  right: 0;
+  position: absolute;
   top: 0;
-  width: 32px;
-  height: 100vh;
-  /* No background or indicator, completely invisible */
-  z-index: 10;
+  right: 0;
+  width: 24px;
+  height: 100%;
+  pointer-events: auto;
+}
+
+.toc-wrapper:hover .toc-trigger-area {
+  width: 320px;
+  z-index: -1;
 }
 
 .toc-panel-content {
+  position: absolute;
+  top: 0;
+  right: 24px;
   width: 280px;
+  max-height: 100%;
   background-color: var(--bg-primary);
-  border-left: 1px solid var(--border-color);
-  box-shadow: -4px 0 12px rgba(0, 0, 0, 0.05);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
-  padding: 96px 16px 16px;
+  padding: 16px;
   overflow-y: auto;
+  
+  transform: translateX(120%);
+  opacity: 0;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.toc-wrapper:hover .toc-panel-content,
+.toc-wrapper:focus-within .toc-panel-content {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .toc-header {
