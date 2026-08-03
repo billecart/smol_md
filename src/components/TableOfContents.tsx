@@ -1,4 +1,5 @@
 import { type TocEntry } from "../hooks/useTableOfContents";
+import { createPortal } from "react-dom";
 
 type TableOfContentsProps = {
   entries: TocEntry[];
@@ -11,7 +12,7 @@ export function TableOfContents({
 }: TableOfContentsProps) {
   if (entries.length === 0) return null;
 
-  return (
+  return createPortal(
     <div className="toc-wrapper">
       <div className="toc-trigger-area" aria-hidden="true" />
       <div className="toc-panel-content">
@@ -37,6 +38,7 @@ export function TableOfContents({
           ))}
         </ul>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
