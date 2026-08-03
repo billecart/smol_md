@@ -998,8 +998,8 @@ input:focus-visible {
   right: 24px;
   width: 280px;
   max-height: 100%;
-  background-color: var(--bg-primary);
-  border: 1px solid var(--border-color);
+  background-color: var(--background-primary);
+  border: 1px solid var(--border-subtle);
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
   display: flex;
