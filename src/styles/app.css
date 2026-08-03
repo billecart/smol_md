@@ -974,7 +974,7 @@ input:focus-visible {
   right: 0;
   height: calc(100vh - 120px);
   width: 320px;
-  z-index: 100;
+  z-index: 9999;
   pointer-events: none;
 }
 
@@ -1006,6 +1006,7 @@ input:focus-visible {
   flex-direction: column;
   padding: 16px;
   overflow-y: auto;
+  z-index: 2;
   
   transform: translateX(120%);
   opacity: 0;
