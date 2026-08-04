@@ -6,7 +6,10 @@ export type ShortcutAction =
   | "toggleSource"
   | "closeTab"
   | "closeWindow"
-  | "find";
+  | "find"
+  | "zoomIn"
+  | "zoomOut"
+  | "zoomReset";
 
 type ShortcutEvent = Pick<
   KeyboardEvent,
@@ -31,6 +34,15 @@ export function getShortcutAction(event: ShortcutEvent): ShortcutAction | null {
       return event.shiftKey ? "closeWindow" : "closeTab";
     case "KeyF":
       return "find";
+    case "Equal":
+    case "NumpadAdd":
+      return "zoomIn";
+    case "Minus":
+    case "NumpadSubtract":
+      return "zoomOut";
+    case "Digit0":
+    case "Numpad0":
+      return "zoomReset";
     default:
       return null;
   }

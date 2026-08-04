@@ -10,6 +10,9 @@ type KeyboardShortcuts = {
   onCloseTab?: () => void;
   onCloseWindow?: () => void;
   onFind?: () => void;
+  onZoomIn?: () => void;
+  onZoomOut?: () => void;
+  onZoomReset?: () => void;
 };
 
 export function useKeyboardShortcuts({
@@ -21,6 +24,9 @@ export function useKeyboardShortcuts({
   onCloseTab,
   onCloseWindow,
   onFind,
+  onZoomIn,
+  onZoomOut,
+  onZoomReset,
 }: KeyboardShortcuts) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -48,10 +54,28 @@ export function useKeyboardShortcuts({
         onCloseWindow?.();
       } else if (action === "find") {
         onFind?.();
+      } else if (action === "zoomIn") {
+        onZoomIn?.();
+      } else if (action === "zoomOut") {
+        onZoomOut?.();
+      } else if (action === "zoomReset") {
+        onZoomReset?.();
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onNew, onOpen, onSave, onSaveAs, onToggleSourceMode, onCloseTab, onCloseWindow, onFind]);
+  }, [
+    onNew,
+    onOpen,
+    onSave,
+    onSaveAs,
+    onToggleSourceMode,
+    onCloseTab,
+    onCloseWindow,
+    onFind,
+    onZoomIn,
+    onZoomOut,
+    onZoomReset,
+  ]);
 }

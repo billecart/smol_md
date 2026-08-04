@@ -17,7 +17,7 @@
   --font-editor: "IBM Plex Mono", "Cascadia Mono", "Cascadia Code", "Roboto Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   --editor-line-height: 1.75;
   --editor-font-size: 16px;
-  --editor-column-width: min(740px, calc(100vw - 80px));
+  --editor-column-width: min(740px, calc(100% - 80px));
   --toolbar-peek-height: 14px;
 
   color: var(--text-normal);
@@ -907,7 +907,7 @@ input:focus-visible {
 
 @media (max-width: 720px) {
   :root {
-    --editor-column-width: min(100vw - 32px, 740px);
+    --editor-column-width: min(calc(100% - 32px), 740px);
   }
 
   .app-bar {

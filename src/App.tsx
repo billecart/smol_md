@@ -55,6 +55,7 @@ function App() {
     resetWorkspace,
   } = documentState;
   const [message, setMessage] = useState("Ready");
+  const [zoomLevel, setZoomLevel] = useState(1);
   const [editorMode, setEditorMode] = useState<EditorMode>("rich");
   const [recentDocuments, setRecentDocuments] = useState<RecentDocument[]>([]);
   const find = useInPageFind();
@@ -373,6 +374,18 @@ function App() {
     find.open();
   }, [editorMode, find]);
 
+  const handleZoomIn = useCallback(() => {
+    setZoomLevel((z) => Math.min(z + 0.1, 3.0));
+  }, []);
+
+  const handleZoomOut = useCallback(() => {
+    setZoomLevel((z) => Math.max(z - 0.1, 0.5));
+  }, []);
+
+  const handleZoomReset = useCallback(() => {
+    setZoomLevel(1);
+  }, []);
+
   useKeyboardShortcuts({
     onNew: handleNew,
     onOpen: handleOpen,
@@ -382,6 +395,9 @@ function App() {
     onCloseTab: handleCloseActiveDocument,
     onCloseWindow: handleCloseWindow,
     onFind: handleFind,
+    onZoomIn: handleZoomIn,
+    onZoomOut: handleZoomOut,
+    onZoomReset: handleZoomReset,
   });
 
   return (
@@ -437,7 +453,7 @@ function App() {
         />
       </div>
 
-      <section className="document-frame" aria-label="Markdown editor">
+      <section className="document-frame" aria-label="Markdown editor" style={{ zoom: zoomLevel } as React.CSSProperties}>
         <div className="editor-column">
           {!isDesktopApp ? (
             <p className="preview-note">
