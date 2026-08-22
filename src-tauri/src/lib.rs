@@ -4,7 +4,9 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{Emitter, Manager, RunEvent, Url};
+use tauri::{Emitter, Manager};
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+use tauri::{RunEvent, Url};
 
 #[derive(Default)]
 struct OpenedMarkdownFiles(Mutex<Vec<String>>);
@@ -138,12 +140,14 @@ fn markdown_path_from_arg(arg: OsString) -> Option<String> {
     None
 }
 
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 fn markdown_path_from_url(url: &Url) -> Option<String> {
     url.to_file_path()
         .ok()
         .and_then(|path| markdown_path_from_arg(path.into_os_string()))
 }
 
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 fn handle_opened_urls(app: &tauri::AppHandle, urls: Vec<Url>) {
     let paths: Vec<String> = urls.iter().filter_map(markdown_path_from_url).collect();
 
@@ -172,9 +176,10 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building smol_md")
-        .run(|app, event| {
-            if let RunEvent::Opened { urls } = event {
-                handle_opened_urls(app, urls);
+        .run(|_app, _event| {
+            #[cfg(any(target_os = "macos", target_os = "ios"))]
+            if let RunEvent::Opened { urls } = _event {
+                handle_opened_urls(_app, urls);
             }
         });
 }
