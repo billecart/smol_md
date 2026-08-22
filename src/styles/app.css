@@ -812,6 +812,29 @@ input:focus-visible {
   line-height: 1.6;
 }
 
+.rich-editor .ProseMirror table {
+  width: 100%;
+  margin: 1.6em 0;
+  border-collapse: collapse;
+}
+
+.rich-editor .ProseMirror th,
+.rich-editor .ProseMirror td {
+  padding: 10px 24px 10px 0;
+  text-align: left;
+  vertical-align: top;
+}
+
+.rich-editor .ProseMirror th p,
+.rich-editor .ProseMirror td p {
+  margin: 0;
+}
+
+.rich-editor .ProseMirror th {
+  font-weight: 600;
+  color: var(--text-normal);
+}
+
 .rich-editor .ProseMirror hr {
   height: 1px;
   margin: 2.4em 0;
