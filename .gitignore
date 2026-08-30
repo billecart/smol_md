@@ -8,5 +8,3 @@ release/
 *.bak
 *.tmp
 .DS_Store
-src-tauri/.DS_Store
-src/.DS_Store
