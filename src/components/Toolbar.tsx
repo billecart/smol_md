@@ -1,4 +1,5 @@
 import {
+  memo,
   useEffect,
   useRef,
   useState,
@@ -34,7 +35,7 @@ type ToolbarProps = {
   showCustomWindowControls: boolean;
 };
 
-export function Toolbar({
+function ToolbarComponent({
   canSave,
   editorMode,
   tabs,
@@ -255,6 +256,8 @@ export function Toolbar({
     </>
   );
 }
+
+export const Toolbar = memo(ToolbarComponent);
 
 function ModeSwitch({
   editorMode,

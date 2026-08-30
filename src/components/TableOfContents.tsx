@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { type TocEntry } from "../hooks/useTableOfContents";
 import { createPortal } from "react-dom";
 
@@ -6,7 +7,7 @@ type TableOfContentsProps = {
   onNavigate: (entry: TocEntry) => void;
 };
 
-export function TableOfContents({
+function TableOfContentsComponent({
   entries,
   onNavigate,
 }: TableOfContentsProps) {
@@ -42,3 +43,5 @@ export function TableOfContents({
     document.body
   );
 }
+
+export const TableOfContents = memo(TableOfContentsComponent);

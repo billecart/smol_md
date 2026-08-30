@@ -199,12 +199,16 @@ function App() {
     });
   };
 
-  const handleNew = async () => {
+  const handleNew = useCallback(async () => {
     createNewDocument();
     setMessage("New empty document");
-  };
+  }, [createNewDocument]);
 
-  const handleOpen = async () => {
+  // NOTE: loadDocument is recreated every render (see useDocumentState.ts),
+  // so handleOpen/handleOpenRecent can't be made fully stable either - their
+  // dependency array is honest about that rather than omitting loadDocument
+  // to fake stability.
+  const handleOpen = useCallback(async () => {
     try {
       const opened = await openMarkdownFile();
 
@@ -219,41 +223,26 @@ function App() {
     } catch (error) {
       setMessage(getErrorMessage(error));
     }
-  };
+  }, [loadDocument, rememberRecentDocument]);
 
-  const handleOpenRecent = async (recentDocument: RecentDocument) => {
-    try {
-      const opened = await openMarkdownFileAtPath(recentDocument.filePath);
+  const handleOpenRecent = useCallback(
+    async (recentDocument: RecentDocument) => {
+      try {
+        const opened = await openMarkdownFileAtPath(recentDocument.filePath);
 
-      loadDocument(opened);
-      rememberRecentDocument(opened);
-      setMessage(`Opened ${opened.fileName}`);
-    } catch (error) {
-      setMessage(getErrorMessage(error));
-    }
-  };
-
-  const handleSave = async () => {
-    if (!filePath) {
-      await handleSaveAs();
-      return;
-    }
-
-    try {
-      if (isUnsafeEmptyOverwrite(markdown, originalMarkdown, filePath)) {
-        setMessage("Save blocked: empty content was not written over the existing file");
-        return;
+        loadDocument(opened);
+        rememberRecentDocument(opened);
+        setMessage(`Opened ${opened.fileName}`);
+      } catch (error) {
+        setMessage(getErrorMessage(error));
       }
+    },
+    [loadDocument, rememberRecentDocument],
+  );
 
-      await saveMarkdownFile(filePath, markdown);
-      markSaved(markdown, filePath);
-      setMessage("Saved");
-    } catch (error) {
-      setMessage(getErrorMessage(error));
-    }
-  };
-
-  const handleSaveAs = async () => {
+  // Genuinely depends on `markdown`, changes every keystroke, left unstable
+  // on purpose (see handleSave below for the matching case).
+  const handleSaveAs = useCallback(async () => {
     try {
       const result = await saveMarkdownFileAs(markdown, fileName);
 
@@ -271,28 +260,64 @@ function App() {
     } catch (error) {
       setMessage(getErrorMessage(error));
     }
-  };
+  }, [markdown, fileName, markSaved, rememberRecentDocument]);
 
-  const handleCloseDocument = async (documentId: string) => {
-    const document = documents.find((item) => item.id === documentId);
-
-    if (!document) {
+  // Genuinely depends on `markdown` (and `filePath`/`originalMarkdown`,
+  // which change together with it) to decide what to write and whether the
+  // save is a safe overwrite - it changes every keystroke and cannot be
+  // stabilized without a ref, which was explicitly out of scope for this
+  // pass. (handleSaveAs is itself unstable for the same reason, so listing
+  // it here doesn't lose anything.)
+  const handleSave = useCallback(async () => {
+    if (!filePath) {
+      await handleSaveAs();
       return;
     }
 
-    if (!(await confirmDiscard(document))) {
-      return;
+    try {
+      if (isUnsafeEmptyOverwrite(markdown, originalMarkdown, filePath)) {
+        setMessage("Save blocked: empty content was not written over the existing file");
+        return;
+      }
+
+      await saveMarkdownFile(filePath, markdown);
+      markSaved(markdown, filePath);
+      setMessage("Saved");
+    } catch (error) {
+      setMessage(getErrorMessage(error));
     }
+  }, [filePath, markdown, originalMarkdown, markSaved, handleSaveAs]);
 
-    closeDocument(documentId);
-    setMessage(`Closed ${document.fileName}`);
-  };
+  // Genuinely depends on `documents` (to look up the document by id) and on
+  // `closeDocument`, which - like loadDocument - can't be made
+  // documents-independent (see useDocumentState.ts). Left unstable on
+  // purpose rather than dropping a real dependency.
+  const handleCloseDocument = useCallback(
+    async (documentId: string) => {
+      const document = documents.find((item) => item.id === documentId);
 
-  const handleCloseActiveDocument = async () => {
+      if (!document) {
+        return;
+      }
+
+      if (!(await confirmDiscard(document))) {
+        return;
+      }
+
+      closeDocument(documentId);
+      setMessage(`Closed ${document.fileName}`);
+    },
+    [documents, closeDocument, confirmDiscard],
+  );
+
+  const handleCloseActiveDocument = useCallback(async () => {
     await handleCloseDocument(activeDocumentId);
-  };
+  }, [activeDocumentId, handleCloseDocument]);
 
-  const handleCloseAllDocuments = async () => {
+  // Genuinely depends on `documents` (to find dirty documents) and
+  // `resetWorkspace`; `documents` changes every keystroke so this can't be
+  // fully stabilized either.
+  const handleCloseAllDocuments = useCallback(async () => {
     const dirtyDocuments = documents.filter((document) => document.isDirty);
 
     if (dirtyDocuments.length > 0) {
@@ -317,9 +342,14 @@ function App() {
 
     resetWorkspace();
     setMessage("Closed all documents");
-  };
+  }, [documents, isDesktopApp, resetWorkspace]);
 
-  const handleCloseWindow = async () => {
+  // hasDirtyDocuments is a boolean derived from `documents` on every render,
+  // but its *value* only flips when a document's dirty state actually
+  // changes (not on every keystroke once a document is already dirty), so
+  // this stays stable across most keystrokes even though it's recomputed
+  // every render.
+  const handleCloseWindow = useCallback(async () => {
     if (!isDesktopApp) {
       window.close();
       return;
@@ -342,15 +372,21 @@ function App() {
     }
 
     await getCurrentWindow().destroy();
-  };
+  }, [isDesktopApp, hasDirtyDocuments]);
 
-  const handleEditorModeChange = (mode: EditorMode) => {
-    if (mode === "source") {
-      setMarkdown(markdown);
-    }
+  // Genuinely depends on `markdown`: switching to source mode snapshots the
+  // current markdown via setMarkdown. Changes every keystroke, left
+  // unstable on purpose (same situation as handleSave/handleSaveAs).
+  const handleEditorModeChange = useCallback(
+    (mode: EditorMode) => {
+      if (mode === "source") {
+        setMarkdown(markdown);
+      }
 
-    setEditorMode(mode);
-  };
+      setEditorMode(mode);
+    },
+    [markdown, setMarkdown],
+  );
 
   const toggleEditorMode = useCallback(() => {
     setEditorMode((currentMode) => {
@@ -386,6 +422,23 @@ function App() {
   const handleZoomReset = useCallback(() => {
     setZoomLevel(1);
   }, []);
+
+  // The `tabs` element passed to Toolbar is an object (a React element), so
+  // it's memoized per the same rule as any other object/array prop. Note
+  // this still recomputes every keystroke in practice, because `documents`
+  // carries each open document's live markdown text - see the report for
+  // why that's a data-model limitation this pass doesn't attempt to fix.
+  const tabs = useMemo(
+    () => (
+      <TopTabs
+        documents={documents}
+        activeDocumentId={activeDocumentId}
+        onSelectDocument={setActiveDocumentId}
+        onCloseDocument={handleCloseDocument}
+      />
+    ),
+    [documents, activeDocumentId, handleCloseDocument],
+  );
 
   useKeyboardShortcuts({
     onNew: handleNew,
@@ -429,14 +482,7 @@ function App() {
         <Toolbar
           canSave={markdown !== originalMarkdown || Boolean(filePath)}
           editorMode={editorMode}
-          tabs={
-            <TopTabs
-              documents={documents}
-              activeDocumentId={activeDocumentId}
-              onSelectDocument={setActiveDocumentId}
-              onCloseDocument={handleCloseDocument}
-            />
-          }
+          tabs={tabs}
           onNew={handleNew}
           onOpen={handleOpen}
           onOpenRecent={handleOpenRecent}

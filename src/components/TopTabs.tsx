@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { X } from "lucide-react";
 import type { OpenDocument } from "../hooks/useDocumentState";
 import { disambiguateTabLabels } from "../utils/tabLabels";
@@ -9,7 +10,7 @@ type TopTabsProps = {
   onCloseDocument: (documentId: string) => void;
 };
 
-export function TopTabs({
+function TopTabsComponent({
   documents,
   activeDocumentId,
   onSelectDocument,
@@ -56,3 +57,5 @@ export function TopTabs({
     </div>
   );
 }
+
+export const TopTabs = memo(TopTabsComponent);
