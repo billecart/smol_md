@@ -8,3 +8,5 @@ release/
 *.bak
 *.tmp
 .DS_Store
+test-files/generated/
+.test-build/
