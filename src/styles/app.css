@@ -3,6 +3,7 @@
 :root {
   --background-primary: #f3f3f2;
   --background-secondary: #ececea;
+  --background-tertiary: #e5e5e2;
   --text-normal: #16160e;
   --editor-text: rgba(22, 22, 14, 0.88);
   --text-muted: rgba(22, 22, 14, 0.55);
@@ -24,7 +25,6 @@
   background: var(--background-primary);
   font-family: var(--font-ui);
   font-synthesis: none;
-  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -813,9 +813,12 @@ input:focus-visible {
 }
 
 .rich-editor .ProseMirror table {
+  display: block;
   width: 100%;
+  max-width: 100%;
   margin: 1.6em 0;
   border-collapse: collapse;
+  overflow-x: auto;
 }
 
 .rich-editor .ProseMirror th,
@@ -904,6 +907,7 @@ input:focus-visible {
   height: 18px;
   content: "";
   transform: translateY(-34px);
+  pointer-events: none;
 }
 
 .path-text,
@@ -1050,7 +1054,7 @@ input:focus-visible {
   align-items: center;
   margin-bottom: 16px;
   padding-bottom: 12px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .toc-header h3 {
@@ -1061,8 +1065,8 @@ input:focus-visible {
 }
 
 .toc-insert-btn {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  background: var(--background-secondary);
+  border: 1px solid var(--border-subtle);
   border-radius: 4px;
   padding: 4px 8px;
   font-size: 12px;
@@ -1072,7 +1076,7 @@ input:focus-visible {
 }
 
 .toc-insert-btn:hover:not(:disabled) {
-  background: var(--bg-tertiary);
+  background: var(--background-tertiary);
   border-color: var(--text-muted);
 }
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, type KeyboardEvent } from "react";
 import { X } from "lucide-react";
+import { formatMatchCounter } from "../utils/inPageFind";
 
 type FindBarProps = {
   query: string;
@@ -40,12 +41,7 @@ export function FindBar({
     }
   };
 
-  const counter =
-    query && matchCount > 0
-      ? `${activeIndex + 1} / ${matchCount}`
-      : query && matchCount === 0
-        ? "No results"
-        : "";
+  const counter = formatMatchCounter(query, activeIndex, matchCount);
 
   return (
     <div className="find-bar" role="search" aria-label="Find in document">

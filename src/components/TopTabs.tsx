@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import type { OpenDocument } from "../hooks/useDocumentState";
+import { disambiguateTabLabels } from "../utils/tabLabels";
 
 type TopTabsProps = {
   documents: OpenDocument[];
@@ -14,9 +15,11 @@ export function TopTabs({
   onSelectDocument,
   onCloseDocument,
 }: TopTabsProps) {
+  const labels = disambiguateTabLabels(documents);
+
   return (
     <div className="top-tabs" role="tablist" aria-label="Open documents">
-      {documents.map((document) => {
+      {documents.map((document, index) => {
         const isActive = document.id === activeDocumentId;
 
         return (
@@ -36,7 +39,7 @@ export function TopTabs({
                 className={document.isDirty ? "dirty-dot" : "saved-dot"}
                 aria-hidden="true"
               />
-              <span>{getTabLabel(document.fileName)}</span>
+              <span>{labels[index]}</span>
             </button>
             <button
               type="button"
@@ -52,8 +55,4 @@ export function TopTabs({
       })}
     </div>
   );
-}
-
-function getTabLabel(fileName: string) {
-  return fileName.replace(/\.(md|markdown)$/i, "");
 }

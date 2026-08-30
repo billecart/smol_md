@@ -46,6 +46,54 @@ test("save as updates the current file path and file name", () => {
   assert.equal(saved.fileName, "final.md");
 });
 
+test("saving keeps edits made after the save started", () => {
+  const document = createLoadedDocument({
+    filePath: "C:\\Notes\\a.md",
+    fileName: "a.md",
+    markdown: "# A\n",
+  });
+  const snapshot = document.markdown;
+  const edited = setDocumentMarkdown(document, "# A\n\nChanged while dialog was open");
+
+  const saved = markDocumentSaved(edited, snapshot, "C:\\Notes\\a.md");
+
+  assert.equal(saved.markdown, "# A\n\nChanged while dialog was open");
+  assert.equal(saved.originalMarkdown, snapshot);
+  assert.equal(saved.isDirty, true);
+});
+
+test("saving marks the document clean when no edits landed during the save", () => {
+  const document = createLoadedDocument({
+    filePath: "C:\\Notes\\a.md",
+    fileName: "a.md",
+    markdown: "# A\n",
+  });
+  const snapshot = document.markdown;
+
+  const saved = markDocumentSaved(document, snapshot, "C:\\Notes\\a.md");
+
+  assert.equal(saved.markdown, snapshot);
+  assert.equal(saved.isDirty, false);
+});
+
+test("save as keeps in-flight edits and adopts the new file name", () => {
+  const document = createDocument({ markdown: "# Draft\n", originalMarkdown: "# Draft\n" });
+  const snapshot = document.markdown;
+  const edited = setDocumentMarkdown(document, "# Draft\n\nOne more paragraph");
+
+  const saved = markDocumentSaved(
+    edited,
+    snapshot,
+    "C:\\Notes\\final.md",
+    "final.md",
+  );
+
+  assert.equal(saved.filePath, "C:\\Notes\\final.md");
+  assert.equal(saved.fileName, "final.md");
+  assert.equal(saved.markdown, "# Draft\n\nOne more paragraph");
+  assert.equal(saved.isDirty, true);
+});
+
 test("closing a dirty tab warns the user", () => {
   assert.equal(requiresDiscardConfirmation({ isDirty: true }), true);
   assert.equal(requiresDiscardConfirmation({ isDirty: false }), false);

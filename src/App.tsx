@@ -31,6 +31,7 @@ import {
   type RecentDocument,
 } from "./utils/recentDocuments";
 import { isUnsafeEmptyOverwrite } from "./utils/saveSafety";
+import { zoomIn, zoomOut, zoomStyle } from "./utils/zoom";
 
 type EditorMode = "rich" | "source";
 
@@ -375,11 +376,11 @@ function App() {
   }, [editorMode, find]);
 
   const handleZoomIn = useCallback(() => {
-    setZoomLevel((z) => Math.min(z + 0.1, 3.0));
+    setZoomLevel((z) => zoomIn(z));
   }, []);
 
   const handleZoomOut = useCallback(() => {
-    setZoomLevel((z) => Math.max(z - 0.1, 0.5));
+    setZoomLevel((z) => zoomOut(z));
   }, []);
 
   const handleZoomReset = useCallback(() => {
@@ -453,7 +454,7 @@ function App() {
         />
       </div>
 
-      <section className="document-frame" aria-label="Markdown editor" style={{ zoom: zoomLevel } as React.CSSProperties}>
+      <section className="document-frame" aria-label="Markdown editor" style={zoomStyle(zoomLevel) as React.CSSProperties}>
         <div className="editor-column">
           {!isDesktopApp ? (
             <p className="preview-note">

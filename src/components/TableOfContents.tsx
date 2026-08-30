@@ -30,9 +30,9 @@ export function TableOfContents({
                 type="button"
                 className="toc-link"
                 onClick={() => onNavigate(entry)}
-                title={`Navigate to ${entry.text}`}
+                title={`Navigate to ${entry.plainText}`}
               >
-                {entry.text}
+                {entry.plainText}
               </button>
             </li>
           ))}

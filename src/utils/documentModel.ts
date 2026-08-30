@@ -59,9 +59,8 @@ export function markDocumentSaved(
     ...document,
     filePath,
     fileName: fileName ?? document.fileName,
-    markdown: normalizedMarkdown,
     originalMarkdown: normalizedMarkdown,
-    isDirty: false,
+    isDirty: document.markdown !== normalizedMarkdown,
     lastSavedAt: new Date(),
   };
 }

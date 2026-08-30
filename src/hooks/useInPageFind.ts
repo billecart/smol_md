@@ -1,4 +1,9 @@
-import { useState, useCallback } from "react";
+import { useCallback, useMemo, useState } from "react";
+import {
+  clampActiveIndex,
+  nextMatchIndex,
+  previousMatchIndex,
+} from "../utils/inPageFind";
 
 export type InPageFind = {
   isOpen: boolean;
@@ -16,7 +21,7 @@ export type InPageFind = {
 export function useInPageFind(): InPageFind {
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQueryState] = useState("");
-  const [matchCount, setMatchCount] = useState(0);
+  const [matchCount, setMatchCountState] = useState(0);
   const [activeIndex, setActiveIndex] = useState(0);
 
   const open = useCallback((prefill?: string) => {
@@ -30,7 +35,7 @@ export function useInPageFind(): InPageFind {
   const close = useCallback(() => {
     setIsOpen(false);
     setQueryState("");
-    setMatchCount(0);
+    setMatchCountState(0);
     setActiveIndex(0);
   }, []);
 
@@ -39,26 +44,43 @@ export function useInPageFind(): InPageFind {
     setActiveIndex(0);
   }, []);
 
+  const setMatchCount = useCallback((n: number) => {
+    setMatchCountState(n);
+    setActiveIndex((i) => clampActiveIndex(i, n));
+  }, []);
+
   const goNext = useCallback(() => {
-    setActiveIndex((i) => (matchCount > 0 ? (i + 1) % matchCount : 0));
+    setActiveIndex((i) => nextMatchIndex(i, matchCount));
   }, [matchCount]);
 
   const goPrev = useCallback(() => {
-    setActiveIndex((i) =>
-      matchCount > 0 ? (i - 1 + matchCount) % matchCount : 0,
-    );
+    setActiveIndex((i) => previousMatchIndex(i, matchCount));
   }, [matchCount]);
 
-  return {
-    isOpen,
-    query,
-    matchCount,
-    activeIndex,
-    open,
-    close,
-    setQuery,
-    setMatchCount,
-    goNext,
-    goPrev,
-  };
+  return useMemo(
+    () => ({
+      isOpen,
+      query,
+      matchCount,
+      activeIndex,
+      open,
+      close,
+      setQuery,
+      setMatchCount,
+      goNext,
+      goPrev,
+    }),
+    [
+      isOpen,
+      query,
+      matchCount,
+      activeIndex,
+      open,
+      close,
+      setQuery,
+      setMatchCount,
+      goNext,
+      goPrev,
+    ],
+  );
 }
