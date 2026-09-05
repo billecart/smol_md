@@ -23,17 +23,19 @@ import {
   toggleEmphasisCommand,
   toggleInlineCodeCommand,
   toggleLinkCommand,
+  listItemSchema,
   toggleStrongCommand,
   wrapInHeadingCommand,
 } from "@milkdown/kit/preset/commonmark";
 import { gfm, toggleStrikethroughCommand } from "@milkdown/kit/preset/gfm";
+import type { Ctx } from "@milkdown/ctx";
 import { lift, setBlockType, toggleMark, wrapIn } from "@milkdown/kit/prose/commands";
 import { markRule } from "@milkdown/kit/prose";
 import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from "@milkdown/kit/prose/state";
 import { Decoration, DecorationSet, EditorView } from "@milkdown/kit/prose/view";
-import type { Node as ProseNode } from "@milkdown/kit/prose/model";
+import type { Node as ProseNode, NodeType } from "@milkdown/kit/prose/model";
 import { history } from "@milkdown/kit/plugin/history";
-import { wrapInList } from "@milkdown/kit/prose/schema-list";
+import { liftListItem, wrapInList } from "@milkdown/kit/prose/schema-list";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import { keymap } from "@milkdown/kit/prose/keymap";
 import {
@@ -72,6 +74,50 @@ function closeLinkDialog() {
   _linkDialogCoords = null;
   _linkDialogOnSubmit = null;
   _linkDialogSync?.();
+}
+
+// True when the caret sits in the first paragraph of a list item, at its very
+// start - the position where Backspace should outdent rather than merge the
+// item into the one above it.
+function isAtStartOfListItem(state: EditorState, listItem: NodeType) {
+  const { $from, empty } = state.selection;
+
+  return (
+    empty &&
+    $from.parentOffset === 0 &&
+    $from.depth > 1 &&
+    $from.node(-1).type === listItem &&
+    $from.index(-1) === 0
+  );
+}
+
+function isInEmptyListItem(state: EditorState, listItem: NodeType) {
+  const { $from, empty } = state.selection;
+
+  return (
+    empty &&
+    $from.depth > 1 &&
+    $from.node(-1).type === listItem &&
+    $from.node(-1).textContent.length === 0
+  );
+}
+
+// A heading cannot be applied inside a list item, and the underlying command
+// simply reports failure - which looked to the user like the menu item doing
+// nothing at all. Step out of the list first, then apply it. Bounded in case
+// the structure is deeper or lifting stops making progress.
+function liftOutOfLists(view: EditorView, listItem: NodeType) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const { $from } = view.state.selection;
+
+    if ($from.depth < 2 || $from.node(-1).type !== listItem) {
+      return;
+    }
+
+    if (!liftListItem(listItem)(view.state, view.dispatch)) {
+      return;
+    }
+  }
 }
 
 function runBlockFormat(
@@ -118,6 +164,13 @@ type ContextMenuPosition = {
   x: number;
   y: number;
 };
+
+function applyHeading(ctx: Ctx, level: number) {
+  const view = ctx.get(editorViewCtx);
+
+  liftOutOfLists(view, listItemSchema.type(ctx));
+  callCommand(wrapInHeadingCommand.key, level)(ctx);
+}
 
 const customEnterPlugin = $prose(
   () =>
@@ -236,16 +289,43 @@ const formattingKeymap = $prose((ctx) =>
       return true;
     },
     "Mod-1": () => {
-      callCommand(wrapInHeadingCommand.key, 1)(ctx);
+      applyHeading(ctx, 1);
       return true;
     },
     "Mod-2": () => {
-      callCommand(wrapInHeadingCommand.key, 2)(ctx);
+      applyHeading(ctx, 2);
       return true;
     },
     "Mod-3": () => {
-      callCommand(wrapInHeadingCommand.key, 3)(ctx);
+      applyHeading(ctx, 3);
       return true;
+    },
+    Backspace: () => {
+      const view = ctx.get(editorViewCtx);
+      const listItem = listItemSchema.type(ctx);
+
+      // Only claim the key at the start of a list item; everywhere else the
+      // default delete behaviour is what you want. Without this, the default
+      // joins the item into the one above, which drops the bullet but leaves
+      // the text stranded inside the previous item.
+      if (!isAtStartOfListItem(view.state, listItem)) {
+        return false;
+      }
+
+      return liftListItem(listItem)(view.state, view.dispatch);
+    },
+    Enter: () => {
+      const view = ctx.get(editorViewCtx);
+      const listItem = listItemSchema.type(ctx);
+
+      // Enter on an empty bullet leaves the list, the usual "press Enter
+      // twice to stop making a list" behaviour. A bullet with text in it
+      // still splits normally, so fall through.
+      if (!isInEmptyListItem(view.state, listItem)) {
+        return false;
+      }
+
+      return liftListItem(listItem)(view.state, view.dispatch);
     },
     "Mod-Shift-s": () => {
       callCommand(toggleStrikethroughCommand.key)(ctx);
@@ -764,6 +844,16 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     setContextMenuPosition(null);
   };
 
+  // Headings go through applyHeading rather than the raw command: inside a
+  // list item the command fails outright, which read as the menu item doing
+  // nothing.
+  const runHeading = (level: number) => {
+    const editor = get();
+    if (!editor) return;
+    editor.action((ctx) => applyHeading(ctx, level));
+    setContextMenuPosition(null);
+  };
+
   // Single dispatch point for every formatting command, shared by the
   // right-click menu buttons below and by the imperative handle the native
   // macOS Format menu drives through App.tsx (see RichEditorHandle above).
@@ -779,13 +869,13 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
         runCommand(toggleStrikethroughCommand);
         break;
       case "h1":
-        runCommand(wrapInHeadingCommand, 1);
+        runHeading(1);
         break;
       case "h2":
-        runCommand(wrapInHeadingCommand, 2);
+        runHeading(2);
         break;
       case "h3":
-        runCommand(wrapInHeadingCommand, 3);
+        runHeading(3);
         break;
       case "bullet-list":
         runBulletList();
