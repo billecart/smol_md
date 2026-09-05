@@ -34,6 +34,7 @@ import {
   saveRecentDocuments,
   type RecentDocument,
 } from "./utils/recentDocuments";
+import { pickDefaultDirectory } from "./utils/filePaths";
 import { isUnsafeEmptyOverwrite } from "./utils/saveSafety";
 import { zoomIn, zoomOut, zoomStyle } from "./utils/zoom";
 
@@ -313,7 +314,14 @@ function App() {
   // to fake stability.
   const handleOpen = useCallback(async () => {
     try {
-      const opened = await openMarkdownFile();
+      // Without this the macOS panel reopens the last folder browsed, which
+      // stalls for seconds when that is a cloud folder or Recents.
+      const opened = await openMarkdownFile(
+        pickDefaultDirectory(
+          filePath,
+          recentDocuments.map((document) => document.filePath),
+        ),
+      );
 
       if (!opened) {
         setMessage("Open cancelled");
@@ -326,7 +334,13 @@ function App() {
     } catch (error) {
       reportProblem(getErrorMessage(error));
     }
-  }, [loadDocument, rememberRecentDocument]);
+  }, [
+    filePath,
+    recentDocuments,
+    loadDocument,
+    rememberRecentDocument,
+    reportProblem,
+  ]);
 
   const handleOpenRecent = useCallback(
     async (recentDocument: RecentDocument) => {

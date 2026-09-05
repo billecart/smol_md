@@ -17,13 +17,16 @@ export function isRunningInTauri() {
   return Boolean(window.__TAURI_INTERNALS__);
 }
 
-export async function openMarkdownFile(): Promise<OpenedMarkdownFile | null> {
+export async function openMarkdownFile(
+  defaultPath?: string,
+): Promise<OpenedMarkdownFile | null> {
   if (!isRunningInTauri()) {
     return openInBrowser();
   }
 
   const selected = await open({
     multiple: false,
+    defaultPath,
     filters: [
       {
         name: "Markdown",
