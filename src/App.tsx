@@ -503,7 +503,6 @@ function App() {
   }, [markdown, setMarkdown]);
 
   const handleFind = useCallback(() => {
-    if (editorMode !== "rich") return;
     if (find.isOpen) {
       // Refocus and select input
       const input = document.querySelector<HTMLInputElement>(".find-bar-input");
@@ -512,7 +511,7 @@ function App() {
       return;
     }
     find.open();
-  }, [editorMode, find]);
+  }, [find]);
 
   const handleZoomIn = useCallback(() => {
     setZoomLevel((z) => zoomIn(z));
@@ -561,7 +560,7 @@ function App() {
     <main
       className={isMacDesktopApp ? "app-shell app-shell-macos" : "app-shell"}
     >
-      {find.isOpen && editorMode === "rich" ? (
+      {find.isOpen ? (
         <FindBar
           query={find.query}
           matchCount={find.matchCount}
@@ -625,6 +624,9 @@ function App() {
               key={activeDocumentId}
               value={markdown}
               onChange={setMarkdown}
+              findQuery={find.isOpen ? find.query : ""}
+              findActiveIndex={find.activeIndex}
+              onFindMatchCount={find.setMatchCount}
             />
           )}
         </div>
