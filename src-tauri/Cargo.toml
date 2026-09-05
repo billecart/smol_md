@@ -16,3 +16,28 @@ tauri-build = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+
+# Direct pins at the versions wry 0.54.4 already brings in transitively, so
+# these don't add a second copy of the crate to the tree. Used by
+# `export_pdf` in src/lib.rs to drive WKWebView's print machinery directly
+# (save-to-PDF, no print panel) instead of through wry's own `print()`, which
+# always shows one.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6.4"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "objc2-core-foundation",
+    "NSPrintInfo",
+    "NSPrintOperation",
+] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "NSString",
+    "NSURL",
+    "NSDictionary",
+] }
+objc2-web-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "objc2-app-kit",
+    "WKWebView",
+] }

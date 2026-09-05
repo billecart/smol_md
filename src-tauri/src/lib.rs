@@ -10,6 +10,16 @@ use tauri::{Emitter, Manager, RunEvent};
 use tauri::Url;
 #[cfg(target_os = "macos")]
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
+#[cfg(target_os = "macos")]
+use objc2::rc::Retained;
+#[cfg(target_os = "macos")]
+use objc2::runtime::{NSObjectProtocol, ProtocolObject};
+#[cfg(target_os = "macos")]
+use objc2_app_kit::{NSPrintInfo, NSPrintJobSavingURL, NSPrintOperation, NSPrintSaveJob};
+#[cfg(target_os = "macos")]
+use objc2_foundation::{NSString, NSURL};
+#[cfg(target_os = "macos")]
+use objc2_web_kit::WKWebView;
 
 #[derive(Default)]
 struct OpenedMarkdownFiles(Mutex<Vec<String>>);
@@ -57,6 +67,106 @@ fn force_quit(app: tauri::AppHandle) {
 #[tauri::command]
 fn print_document(window: tauri::WebviewWindow) -> Result<(), String> {
     window.print().map_err(|error| error.to_string())
+}
+
+// 20mm margins expressed in points, matching the `@page { margin: 20mm }`
+// rule already used by the print stylesheet (1mm = 72/25.4pt ≈ 2.83465pt).
+#[cfg(target_os = "macos")]
+const PDF_EXPORT_MARGIN_POINTS: f64 = 56.7;
+
+// A true "Export as PDF": writes straight to `path` with no print panel and
+// no print dialog at all, unlike `print_document` above (which opens the OS
+// print panel - "Save as PDF" there still needs the user to click through
+// it). `with_webview`'s closure runs on the main thread but is fire-and-forget
+// from the caller's point of view, so the result comes back over a channel.
+#[tauri::command]
+fn export_pdf(window: tauri::WebviewWindow, path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let (result_tx, result_rx) = std::sync::mpsc::channel::<Result<(), String>>();
+
+        window
+            .with_webview(move |platform| {
+                let outcome = export_pdf_from_webview(&platform, &path);
+                let _ = result_tx.send(outcome);
+            })
+            .map_err(|error| error.to_string())?;
+
+        result_rx
+            .recv()
+            .map_err(|_| "PDF export did not complete.".to_string())?
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, path);
+        Err("PDF export is only available on macOS".into())
+    }
+}
+
+// Drives WKWebView's own print machinery directly instead of going through
+// wry's `print()`/`print_with_options()`, which always calls
+// `runOperationModalForWindow...` and therefore always shows the print
+// panel (see wry-0.54.4 src/wkwebview/mod.rs, print_with_options). Getting a
+// silent save-to-PDF instead means stopping one step earlier: build the
+// NSPrintOperation ourselves, point its NSPrintInfo at a file instead of a
+// printer, and call `runOperation` (not the modal-for-window variant).
+#[cfg(target_os = "macos")]
+fn export_pdf_from_webview(
+    platform: &tauri::webview::PlatformWebview,
+    path: &str,
+) -> Result<(), String> {
+    // Safety: on macOS, `PlatformWebview::inner` returns the `WKWebView *`
+    // backing this window. `with_webview` runs this closure on the main
+    // thread while the window is alive, so the pointer is valid for the
+    // duration of this call.
+    let webview_ptr = platform.inner() as *mut WKWebView;
+    if webview_ptr.is_null() {
+        return Err("Could not access the webview to export a PDF.".to_string());
+    }
+    let webview: &WKWebView = unsafe { &*webview_ptr };
+
+    let can_print =
+        unsafe { webview.respondsToSelector(objc2::sel!(printOperationWithPrintInfo:)) };
+    if !can_print {
+        return Err("This version of macOS cannot export to PDF.".to_string());
+    }
+
+    let print_info = NSPrintInfo::sharedPrintInfo();
+    print_info.setTopMargin(PDF_EXPORT_MARGIN_POINTS);
+    print_info.setRightMargin(PDF_EXPORT_MARGIN_POINTS);
+    print_info.setBottomMargin(PDF_EXPORT_MARGIN_POINTS);
+    print_info.setLeftMargin(PDF_EXPORT_MARGIN_POINTS);
+
+    let destination_url = NSURL::fileURLWithPath(&NSString::from_str(path));
+
+    // Two attributes on NSPrintInfo turn this into "save straight to a file"
+    // rather than "spool to a printer" or "open a preview": the job
+    // disposition, and the destination URL under NSPrintJobSavingURL in its
+    // attribute dictionary.
+    unsafe {
+        print_info.setJobDisposition(NSPrintSaveJob);
+
+        let dictionary = print_info.dictionary();
+        dictionary.setObject_forKey(
+            destination_url.as_ref(),
+            ProtocolObject::from_ref(NSPrintJobSavingURL),
+        );
+    }
+
+    let print_operation: Retained<NSPrintOperation> =
+        unsafe { webview.printOperationWithPrintInfo(&print_info) };
+    print_operation.setShowsPrintPanel(false);
+    print_operation.setShowsProgressPanel(false);
+
+    // Deliberately `runOperation`, not
+    // `runOperationModalForWindow_delegate_didRunSelector_contextInfo` - the
+    // modal variant is what makes wry's own print() show a panel.
+    if print_operation.runOperation() {
+        Ok(())
+    } else {
+        Err("Exporting to PDF failed.".to_string())
+    }
 }
 
 // Rebuilds ONLY the "Open Recent" submenu in place, leaving the rest of the
@@ -326,6 +436,13 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         Some("CmdOrCtrl+Shift+S"),
     )?;
     let print_item = MenuItem::with_id(app, "print", "Print…", true, Some("CmdOrCtrl+P"))?;
+    let export_pdf_item = MenuItem::with_id(
+        app,
+        "export-pdf",
+        "Export as PDF…",
+        true,
+        None::<&str>,
+    )?;
 
     let file_menu = Submenu::with_items(
         app,
@@ -343,6 +460,7 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &save_as_item,
             &PredefinedMenuItem::separator(app)?,
             &print_item,
+            &export_pdf_item,
         ],
     )?;
 

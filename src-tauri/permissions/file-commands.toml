@@ -9,5 +9,6 @@ commands.allow = [
   "set_unsaved_changes",
   "force_quit",
   "print_document",
-  "set_recent_documents"
+  "set_recent_documents",
+  "export_pdf"
 ]

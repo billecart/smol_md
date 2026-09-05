@@ -231,6 +231,14 @@ export async function forceQuit(): Promise<void> {
 // Opens the OS print panel for the current window. On macOS/wry that panel
 // has a "Save as PDF" option, so this one call covers both Print and Export
 // to PDF - see print_document in src-tauri/src/lib.rs.
+export async function exportPdf(path: string): Promise<void> {
+  if (!isRunningInTauri()) {
+    return;
+  }
+
+  await invoke("export_pdf", { path });
+}
+
 export async function printDocument(): Promise<void> {
   if (!isRunningInTauri()) {
     return;

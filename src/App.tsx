@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { confirm } from "@tauri-apps/plugin-dialog";
+import { confirm, save } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { FindBar } from "./components/FindBar";
@@ -25,6 +25,7 @@ import {
   openMarkdownFile,
   openMarkdownFileAtPath,
   openStartupMarkdownFile,
+  exportPdf,
   printDocument,
   setRecentDocuments as setNativeRecentDocuments,
   setUnsavedChanges,
@@ -548,6 +549,27 @@ function App() {
     });
   }, [markdown, setMarkdown]);
 
+  // Writes the PDF with no print panel; the only dialog is where to put it.
+  const handleExportPdf = useCallback(async () => {
+    try {
+      const suggested = fileName.replace(/\.(md|markdown)$/i, "");
+      const path = await save({
+        defaultPath: `${suggested}.pdf`,
+        filters: [{ name: "PDF", extensions: ["pdf"] }],
+      });
+
+      if (!path) {
+        setMessage("Export cancelled");
+        return;
+      }
+
+      await exportPdf(path);
+      setMessage(`Exported ${path.split(/[\\/]/).pop()}`);
+    } catch (error) {
+      reportProblem(getErrorMessage(error));
+    }
+  }, [fileName, reportProblem]);
+
   const handleFind = useCallback(() => {
     if (find.isOpen) {
       // Refocus and select input
@@ -607,6 +629,7 @@ function App() {
     handleSave,
     handleSaveAs,
     handleFind,
+    handleExportPdf,
     toggleEditorMode,
     handleZoomIn,
     handleZoomOut,
@@ -624,6 +647,7 @@ function App() {
       handleSave,
       handleSaveAs,
       handleFind,
+      handleExportPdf,
       toggleEditorMode,
       handleZoomIn,
       handleZoomOut,
@@ -691,6 +715,9 @@ function App() {
           break;
         case "print":
           void printDocument();
+          break;
+        case "export-pdf":
+          void handlers.handleExportPdf();
           break;
         case "find":
           handlers.handleFind();
