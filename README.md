@@ -59,10 +59,11 @@ All formatting available via the right-click context menu:
 Block format buttons (list, blockquote, code) can be freely switched — converting one format to another is supported.
 
 ### Find in page
-- `Cmd/Ctrl+F` opens an overlay find bar (rich mode only)
+- `Cmd/Ctrl+F` opens an overlay find bar in both Rich and Source mode
 - Case-insensitive substring matching
 - Enter / Shift+Enter to cycle through matches
 - Match counter (current / total)
+- In Source mode the active match is selected and scrolled to, since a plain textarea cannot carry highlights
 - Escape to close
 
 ### Smart Enter key
@@ -74,8 +75,8 @@ Block format buttons (list, blockquote, code) can be freely switched — convert
 ### Window & platform
 - **macOS**: Native titlebar with traffic-light window controls, hidden title, overlay style
 - **Windows**: Custom titlebar with drag, minimize, maximize, and close controls
-- **macOS**: `Cmd+W` closes active tab, `Cmd+Shift+W` closes window
-- **Windows**: `Ctrl+W` closes active tab, `Ctrl+Shift+W` closes window
+- **macOS**: `Cmd+W` closes active tab, and closes the window once it is the last tab; `Cmd+Shift+W` closes window
+- **Windows**: `Ctrl+W` closes active tab, and closes the window once it is the last tab; `Ctrl+Shift+W` closes window
 - **macOS**: App icon (`smol_md`) shown in the toolbar
 - **Windows**: Small `s` icon shown in the menu area
 
@@ -88,9 +89,9 @@ Block format buttons (list, blockquote, code) can be freely switched — convert
 | `Cmd/Ctrl+S` | Save |
 | `Cmd/Ctrl+Shift+S` | Save As |
 | `Cmd/Ctrl+` ` ` ` | Toggle Source / Rich mode |
-| `Cmd/Ctrl+W` | Close active tab |
+| `Cmd/Ctrl+W` | Close active tab, or the window if it is the last tab |
 | `Cmd/Ctrl+Shift+W` | Close window |
-| `Cmd/Ctrl+F` | Find in page (rich mode only) |
+| `Cmd/Ctrl+F` | Find in page |
 | `Cmd/Ctrl+B` | Bold |
 | `Cmd/Ctrl+I` | Italic |
 | `Cmd/Ctrl+K` | Insert link |
@@ -152,7 +153,24 @@ which also copies release artifacts into the `release/` directory.
 npm test
 ```
 
-Runs unit tests under `tests/` for document model, editor stats, keyboard shortcuts, and recent documents.
+Runs unit tests under `tests/` for the document model, editor stats, keyboard shortcuts, recent documents,
+heading extraction, in-page find, zoom, tab labels, save state, file paths, and a stylesheet guard that fails
+if a CSS variable is used without being declared or a remote resource is imported.
+
+## Document size
+
+The editor keeps the whole document in the DOM, so cost grows with file size. Measured on Apple Silicon,
+typing a character in Source mode costs roughly:
+
+| Document | Per keystroke |
+|---|---|
+| 100 KB | under 1 ms |
+| 500 KB | about 7 ms |
+| 2 MB | about 66 ms |
+
+500 KB is comfortable. Past roughly 1 MB, typing in Source mode starts to feel heavy, and 2 MB is slow
+enough to notice on every key. Rich mode holds up better at every size because its editor batches updates.
+Splitting very large documents is the practical answer; nothing is virtualised.
 
 ## Known limitations
 
