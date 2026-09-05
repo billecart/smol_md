@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import type { RecentDocument } from "../utils/recentDocuments";
 
 export type OpenedMarkdownFile = {
   filePath: string | null;
@@ -225,6 +226,35 @@ export async function forceQuit(): Promise<void> {
   }
 
   await invoke("force_quit");
+}
+
+// Opens the OS print panel for the current window. On macOS/wry that panel
+// has a "Save as PDF" option, so this one call covers both Print and Export
+// to PDF - see print_document in src-tauri/src/lib.rs.
+export async function printDocument(): Promise<void> {
+  if (!isRunningInTauri()) {
+    return;
+  }
+
+  await invoke("print_document");
+}
+
+// Rebuilds the native "Open Recent" submenu on macOS from the frontend's own
+// recentDocuments list (see src/utils/recentDocuments.ts), which stays the
+// single source of truth. A no-op off macOS, where there is no native menu.
+export async function setRecentDocuments(
+  documents: RecentDocument[],
+): Promise<void> {
+  if (!isRunningInTauri()) {
+    return;
+  }
+
+  await invoke("set_recent_documents", {
+    documents: documents.map((document) => ({
+      filePath: document.filePath,
+      fileName: document.fileName,
+    })),
+  });
 }
 
 function ensureMarkdownExtension(path: string) {

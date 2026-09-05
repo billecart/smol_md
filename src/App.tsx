@@ -4,7 +4,11 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { FindBar } from "./components/FindBar";
 import { Notice, type NoticeMessage } from "./components/Notice";
-import { RichEditor } from "./components/RichEditor";
+import {
+  RichEditor,
+  type FormatCommandId,
+  type RichEditorHandle,
+} from "./components/RichEditor";
 import { SourceEditor } from "./components/SourceEditor";
 import { StatusBar } from "./components/StatusBar";
 import { TopTabs } from "./components/TopTabs";
@@ -21,6 +25,8 @@ import {
   openMarkdownFile,
   openMarkdownFileAtPath,
   openStartupMarkdownFile,
+  printDocument,
+  setRecentDocuments as setNativeRecentDocuments,
   setUnsavedChanges,
   takeOpenedMarkdownFiles,
   saveMarkdownFile,
@@ -80,6 +86,7 @@ function App() {
   const hasCheckedStartupFile = useRef(false);
   const isDesktopApp = isRunningInTauri();
   const isMacDesktopApp = isDesktopApp && isMacOs();
+  const richEditorRef = useRef<RichEditorHandle>(null);
 
   const title = useMemo(() => {
     const dirtyMark = isDirty ? "*" : "";
@@ -176,6 +183,18 @@ function App() {
       setRecentDocuments(loadRecentDocuments());
     }
   }, [isMacDesktopApp]);
+
+  // Keeps the native macOS "Open Recent" submenu in sync with our own
+  // recentDocuments state (backed by localStorage), which stays the single
+  // source of truth. Runs once on mount (with whatever recentDocuments is
+  // at that point) and again every time it changes.
+  useEffect(() => {
+    if (!isMacDesktopApp) {
+      return;
+    }
+
+    void setNativeRecentDocuments(recentDocuments);
+  }, [isMacDesktopApp, recentDocuments]);
 
   const rememberRecentDocument = useCallback(
     (opened: Pick<OpenedMarkdownFile, "filePath" | "fileName">) => {
@@ -552,6 +571,162 @@ function App() {
     setZoomLevel(1);
   }, []);
 
+  // The ids RichEditor's context menu (and now the native Format menu) both
+  // dispatch through - see FormatCommandId in RichEditor.tsx.
+  const formatCommandIds = useMemo(
+    () =>
+      new Set<FormatCommandId>([
+        "bold",
+        "italic",
+        "strikethrough",
+        "h1",
+        "h2",
+        "h3",
+        "bullet-list",
+        "ordered-list",
+        "blockquote",
+        "code-block",
+        "link",
+        "highlight",
+      ]),
+    [],
+  );
+
+  // Most of these handlers are recreated often (handleOpen/handleSave/etc.
+  // depend on things that change every keystroke), so the menu-action
+  // listener effect below can't list them as dependencies without
+  // resubscribing constantly. Mirroring the hasDirtyDocumentsRef pattern
+  // above: a ref updated after every render holds the latest closures, and
+  // the listener effect itself only depends on `isDesktopApp`.
+  const menuActionHandlersRef = useRef({
+    handleNew,
+    handleOpen,
+    handleOpenRecent,
+    handleCloseActiveDocument,
+    handleCloseAllDocuments,
+    handleSave,
+    handleSaveAs,
+    handleFind,
+    toggleEditorMode,
+    handleZoomIn,
+    handleZoomOut,
+    handleZoomReset,
+    recentDocuments,
+  });
+
+  useEffect(() => {
+    menuActionHandlersRef.current = {
+      handleNew,
+      handleOpen,
+      handleOpenRecent,
+      handleCloseActiveDocument,
+      handleCloseAllDocuments,
+      handleSave,
+      handleSaveAs,
+      handleFind,
+      toggleEditorMode,
+      handleZoomIn,
+      handleZoomOut,
+      handleZoomReset,
+      recentDocuments,
+    };
+  });
+
+  // Native menu items (built in src-tauri/src/lib.rs's build_app_menu) have
+  // no direct way to call back into React - Rust's on_menu_event handler
+  // just emits a "menu-action" event with the item's id as payload, and this
+  // dispatches each id to the same handler the equivalent hamburger-menu
+  // item or keyboard shortcut already uses. macOS only in practice (that's
+  // the only platform with a native menu), but this listens whenever the app
+  // is running as a desktop app since nothing native ever emits the event
+  // otherwise.
+  useEffect(() => {
+    if (!isDesktopApp) {
+      return;
+    }
+
+    let isCancelled = false;
+    let unlisten: (() => void) | undefined;
+
+    listen<string>("menu-action", (event) => {
+      const id = event.payload;
+      const handlers = menuActionHandlersRef.current;
+
+      if (id.startsWith("recent:")) {
+        const index = Number(id.slice("recent:".length));
+        const recentDocument = handlers.recentDocuments[index];
+
+        if (recentDocument) {
+          void handlers.handleOpenRecent(recentDocument);
+        }
+
+        return;
+      }
+
+      if (formatCommandIds.has(id as FormatCommandId)) {
+        // No-op in Source mode: the rich editor (and its ref) isn't
+        // mounted there.
+        richEditorRef.current?.runFormatCommand(id as FormatCommandId);
+        return;
+      }
+
+      switch (id) {
+        case "new":
+          void handlers.handleNew();
+          break;
+        case "open":
+          void handlers.handleOpen();
+          break;
+        case "close-tab":
+          void handlers.handleCloseActiveDocument();
+          break;
+        case "close-all":
+          void handlers.handleCloseAllDocuments();
+          break;
+        case "save":
+          void handlers.handleSave();
+          break;
+        case "save-as":
+          void handlers.handleSaveAs();
+          break;
+        case "print":
+          void printDocument();
+          break;
+        case "find":
+          handlers.handleFind();
+          break;
+        case "toggle-mode":
+          handlers.toggleEditorMode();
+          break;
+        case "zoom-in":
+          handlers.handleZoomIn();
+          break;
+        case "zoom-out":
+          handlers.handleZoomOut();
+          break;
+        case "zoom-reset":
+          handlers.handleZoomReset();
+          break;
+        default:
+          break;
+      }
+    })
+      .then((cleanup) => {
+        if (isCancelled) {
+          cleanup();
+          return;
+        }
+
+        unlisten = cleanup;
+      })
+      .catch(() => undefined);
+
+    return () => {
+      isCancelled = true;
+      unlisten?.();
+    };
+  }, [isDesktopApp, formatCommandIds]);
+
   // The `tabs` element passed to Toolbar is an object (a React element), so
   // it's memoized per the same rule as any other object/array prop. Note
   // this still recomputes every keystroke in practice, because `documents`
@@ -627,6 +802,7 @@ function App() {
           showOpenRecent={isMacDesktopApp}
           showBrandInAppBar={isMacDesktopApp}
           showCustomWindowControls={isDesktopApp && !isMacDesktopApp}
+          showHamburgerMenu={!isMacDesktopApp}
         />
       </div>
 
@@ -641,6 +817,7 @@ function App() {
           {editorMode === "rich" ? (
             <RichEditor
               key={activeDocumentId}
+              ref={richEditorRef}
               value={markdown}
               onChange={setMarkdown}
               findQuery={find.isOpen ? find.query : ""}

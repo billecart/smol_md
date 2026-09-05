@@ -1233,3 +1233,93 @@ input:focus-visible {
   background: rgba(22, 22, 14, 0.06);
   color: var(--text-normal);
 }
+
+/* Print / Export to PDF (File > Print..., wired to window.print() via the
+ * print_document Tauri command - see src-tauri/src/lib.rs). Everything that
+ * is app chrome rather than document content gets hidden; the document
+ * itself is unpinned from the fixed-width, fixed-position, zoomed layout
+ * the screen uses so it prints as a plain flowing page. */
+@media print {
+  /* Paper needs its own margin; the screen column width does not apply here.
+     Point sizes rather than pixels because print resolution is not screen
+     resolution, and 11pt on A4 keeps the line near the 65-75 characters that
+     the on-screen column was tuned for. */
+  @page {
+    margin: 20mm;
+  }
+
+  .top-chrome-hitbox,
+  .top-chrome,
+  .status-bar,
+  .find-bar,
+  .toc-wrapper,
+  .notice,
+  .preview-note {
+    display: none !important;
+  }
+
+  .app-shell {
+    min-height: 0;
+    background: #fff;
+  }
+
+  /* Overrides the inline `zoom` style the on-screen zoom controls set - see
+   * zoomStyle() in src/utils/zoom.ts. */
+  .document-frame {
+    width: auto;
+    min-height: 0;
+    padding: 0;
+    zoom: 1 !important;
+  }
+
+  .editor-column {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+  }
+
+  .source-editor,
+  .rich-editor-shell,
+  .rich-editor,
+  .rich-editor .ProseMirror {
+    position: static;
+    width: 100%;
+    min-height: 0;
+    background: #fff;
+    color: #000;
+    box-shadow: none;
+    font-size: 11pt;
+  }
+
+  /* The on-screen muted greys are chosen against a warm paper background and
+     print washed out; take them back to solid black. */
+  .rich-editor .ProseMirror blockquote {
+    color: #000;
+    border-left-color: rgba(0, 0, 0, 0.4);
+  }
+
+  .rich-editor .ProseMirror h1,
+  .rich-editor .ProseMirror h2,
+  .rich-editor .ProseMirror h3,
+  .rich-editor .ProseMirror h4,
+  .rich-editor .ProseMirror h5,
+  .rich-editor .ProseMirror h6 {
+    break-after: avoid;
+  }
+
+  .rich-editor .ProseMirror :not(pre) > code,
+  .rich-editor .ProseMirror pre,
+  .rich-editor .ProseMirror mark {
+    background: transparent;
+  }
+
+  .rich-editor .ProseMirror pre {
+    border: 1px solid rgba(0, 0, 0, 0.2);
+  }
+
+  .rich-editor .ProseMirror table,
+  .rich-editor .ProseMirror th,
+  .rich-editor .ProseMirror td {
+    background: transparent;
+  }
+}

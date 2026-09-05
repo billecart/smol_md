@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  type MouseEvent,
+} from "react";
 import {
   CmdKey,
   Editor,
@@ -83,6 +90,28 @@ type RichEditorProps = {
   findQuery?: string;
   findActiveIndex?: number;
   onFindMatchCount?: (count: number) => void;
+};
+
+// The ids the native macOS Format menu sends through App.tsx's "menu-action"
+// listener - see build_app_menu's Format submenu in src-tauri/src/lib.rs.
+// Kept in sync with those menu item ids by hand; there is no single shared
+// source of truth across the Rust/TS boundary.
+export type FormatCommandId =
+  | "bold"
+  | "italic"
+  | "strikethrough"
+  | "h1"
+  | "h2"
+  | "h3"
+  | "bullet-list"
+  | "ordered-list"
+  | "blockquote"
+  | "code-block"
+  | "link"
+  | "highlight";
+
+export type RichEditorHandle = {
+  runFormatCommand: (command: FormatCommandId) => void;
 };
 
 type ContextMenuPosition = {
@@ -412,35 +441,33 @@ const findDecorationPlugin = $prose(
     }),
 );
 
-export function RichEditor({
-  value,
-  onChange,
-  findQuery = "",
-  findActiveIndex = 0,
-  onFindMatchCount,
-}: RichEditorProps) {
-  const normalizedValue = normalizeMarkdownLineBreaks(value);
+export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(
+  function RichEditor(
+    { value, onChange, findQuery = "", findActiveIndex = 0, onFindMatchCount },
+    ref,
+  ) {
+    const normalizedValue = normalizeMarkdownLineBreaks(value);
 
-  return (
-    <MilkdownProvider>
-      <RichEditorInner
-        value={normalizedValue}
-        onChange={onChange}
-        findQuery={findQuery}
-        findActiveIndex={findActiveIndex}
-        onFindMatchCount={onFindMatchCount}
-      />
-    </MilkdownProvider>
-  );
-}
+    return (
+      <MilkdownProvider>
+        <RichEditorInner
+          ref={ref}
+          value={normalizedValue}
+          onChange={onChange}
+          findQuery={findQuery}
+          findActiveIndex={findActiveIndex}
+          onFindMatchCount={onFindMatchCount}
+        />
+      </MilkdownProvider>
+    );
+  },
+);
 
-function RichEditorInner({
-  value,
-  onChange,
-  findQuery,
-  findActiveIndex,
-  onFindMatchCount,
-}: RichEditorProps) {
+const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
+  function RichEditorInner(
+    { value, onChange, findQuery, findActiveIndex, onFindMatchCount },
+    ref,
+  ) {
   const lastKnownMarkdown = useRef(value);
   const isSyncingFromApp = useRef(false);
   const [contextMenuPosition, setContextMenuPosition] =
@@ -701,6 +728,88 @@ function RichEditorInner({
     });
   };
 
+  const runBulletList = () => {
+    const editor = get();
+    if (!editor) return;
+    editor.action((ctx) => {
+      runBlockFormat(ctx.get(editorViewCtx), wrapInList(bulletListSchema.type(ctx)));
+    });
+    setContextMenuPosition(null);
+  };
+
+  const runOrderedList = () => {
+    const editor = get();
+    if (!editor) return;
+    editor.action((ctx) => {
+      runBlockFormat(ctx.get(editorViewCtx), wrapInList(orderedListSchema.type(ctx)));
+    });
+    setContextMenuPosition(null);
+  };
+
+  const runBlockquote = () => {
+    const editor = get();
+    if (!editor) return;
+    editor.action((ctx) => {
+      runBlockFormat(ctx.get(editorViewCtx), wrapIn(blockquoteSchema.type(ctx)));
+    });
+    setContextMenuPosition(null);
+  };
+
+  const runCodeBlock = () => {
+    const editor = get();
+    if (!editor) return;
+    editor.action((ctx) => {
+      runBlockFormat(ctx.get(editorViewCtx), setBlockType(codeBlockSchema.type(ctx)));
+    });
+    setContextMenuPosition(null);
+  };
+
+  // Single dispatch point for every formatting command, shared by the
+  // right-click menu buttons below and by the imperative handle the native
+  // macOS Format menu drives through App.tsx (see RichEditorHandle above).
+  const runFormatCommand = (command: FormatCommandId) => {
+    switch (command) {
+      case "bold":
+        runCommand(toggleStrongCommand);
+        break;
+      case "italic":
+        runCommand(toggleEmphasisCommand);
+        break;
+      case "strikethrough":
+        runCommand(toggleStrikethroughCommand);
+        break;
+      case "h1":
+        runCommand(wrapInHeadingCommand, 1);
+        break;
+      case "h2":
+        runCommand(wrapInHeadingCommand, 2);
+        break;
+      case "h3":
+        runCommand(wrapInHeadingCommand, 3);
+        break;
+      case "bullet-list":
+        runBulletList();
+        break;
+      case "ordered-list":
+        runOrderedList();
+        break;
+      case "blockquote":
+        runBlockquote();
+        break;
+      case "code-block":
+        runCodeBlock();
+        break;
+      case "link":
+        promptForLink();
+        break;
+      case "highlight":
+        runCommand(toggleHighlightCommand);
+        break;
+    }
+  };
+
+  useImperativeHandle(ref, () => ({ runFormatCommand }));
+
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const menuWidth = 184;
@@ -793,60 +902,16 @@ function RichEditorInner({
             Heading 3
           </button>
           <span className="editor-context-divider" aria-hidden="true" />
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              const editor = get();
-              if (!editor) return;
-              editor.action((ctx) => {
-                runBlockFormat(ctx.get(editorViewCtx), wrapInList(bulletListSchema.type(ctx)));
-              });
-              setContextMenuPosition(null);
-            }}
-          >
+          <button type="button" role="menuitem" onClick={runBulletList}>
             Bullet list
           </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              const editor = get();
-              if (!editor) return;
-              editor.action((ctx) => {
-                runBlockFormat(ctx.get(editorViewCtx), wrapInList(orderedListSchema.type(ctx)));
-              });
-              setContextMenuPosition(null);
-            }}
-          >
+          <button type="button" role="menuitem" onClick={runOrderedList}>
             Numbered list
           </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              const editor = get();
-              if (!editor) return;
-              editor.action((ctx) => {
-                runBlockFormat(ctx.get(editorViewCtx), wrapIn(blockquoteSchema.type(ctx)));
-              });
-              setContextMenuPosition(null);
-            }}
-          >
+          <button type="button" role="menuitem" onClick={runBlockquote}>
             Blockquote
           </button>
-          <button
-            type="button"
-            role="menuitem"
-            onClick={() => {
-              const editor = get();
-              if (!editor) return;
-              editor.action((ctx) => {
-                runBlockFormat(ctx.get(editorViewCtx), setBlockType(codeBlockSchema.type(ctx)));
-              });
-              setContextMenuPosition(null);
-            }}
-          >
+          <button type="button" role="menuitem" onClick={runCodeBlock}>
             Code block
           </button>
           <button type="button" role="menuitem" onClick={promptForLink}>
@@ -885,4 +950,5 @@ function RichEditorInner({
       ) : null}
     </div>
   );
-}
+  },
+);

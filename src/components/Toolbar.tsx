@@ -33,6 +33,7 @@ type ToolbarProps = {
   showOpenRecent: boolean;
   showBrandInAppBar: boolean;
   showCustomWindowControls: boolean;
+  showHamburgerMenu: boolean;
 };
 
 function ToolbarComponent({
@@ -53,6 +54,7 @@ function ToolbarComponent({
   showOpenRecent,
   showBrandInAppBar,
   showCustomWindowControls,
+  showHamburgerMenu,
 }: ToolbarProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -113,86 +115,88 @@ function ToolbarComponent({
   return (
     <>
       <header className="app-bar">
-        <div className="app-menu" ref={menuRef}>
-          {!showBrandInAppBar ? (
-            <img className="app-icon" src={appIcon} alt="" aria-hidden="true" />
-          ) : null}
-          <button
-            type="button"
-            className="menu-trigger"
-            aria-label="open menu"
-            aria-expanded={isMenuOpen}
-            aria-haspopup="menu"
-            onClick={() => setIsMenuOpen((current) => !current)}
-            title="menu"
-          >
-            <Menu aria-hidden="true" size={18} strokeWidth={1.8} />
-          </button>
+        {showHamburgerMenu ? (
+          <div className="app-menu" ref={menuRef}>
+            {!showBrandInAppBar ? (
+              <img className="app-icon" src={appIcon} alt="" aria-hidden="true" />
+            ) : null}
+            <button
+              type="button"
+              className="menu-trigger"
+              aria-label="open menu"
+              aria-expanded={isMenuOpen}
+              aria-haspopup="menu"
+              onClick={() => setIsMenuOpen((current) => !current)}
+              title="menu"
+            >
+              <Menu aria-hidden="true" size={18} strokeWidth={1.8} />
+            </button>
 
-          {isMenuOpen ? (
-            <nav className="command-menu" aria-label="file commands">
-              <button type="button" onClick={() => void runMenuCommand(onNew)}>
-                new
-              </button>
-              <button type="button" onClick={() => void runMenuCommand(onOpen)}>
-                open
-              </button>
-              {showOpenRecent ? (
-                <div className="command-submenu">
-                  <button type="button" disabled={recentDocuments.length === 0}>
-                    open recent
-                  </button>
-                  {recentDocuments.length > 0 ? (
-                    <div className="command-submenu-panel" role="menu">
-                      {recentDocuments.map((document) => (
-                        <button
-                          key={document.filePath}
-                          type="button"
-                          title={document.filePath}
-                          onClick={() =>
-                            void runMenuCommand(() => onOpenRecent(document))
-                          }
-                        >
-                          {document.fileName}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ) : null}
-              <button
-                type="button"
-                disabled={!canSave}
-                onClick={() => void runMenuCommand(onSave)}
-              >
-                save
-              </button>
-              <button
-                type="button"
-                onClick={() => void runMenuCommand(onSaveAs)}
-              >
-                save as
-              </button>
-              <div className="command-menu-divider" aria-hidden="true" />
-              <button type="button" onClick={() => void runMenuCommand(onClose)}>
-                close
-              </button>
-              <button
-                type="button"
-                onClick={() => void runMenuCommand(onCloseAll)}
-              >
-                close all
-              </button>
-              <div className="command-menu-divider" aria-hidden="true" />
-              <button
-                type="button"
-                onClick={() => void runMenuCommand(onCloseWindow)}
-              >
-                quit
-              </button>
-            </nav>
-          ) : null}
-        </div>
+            {isMenuOpen ? (
+              <nav className="command-menu" aria-label="file commands">
+                <button type="button" onClick={() => void runMenuCommand(onNew)}>
+                  new
+                </button>
+                <button type="button" onClick={() => void runMenuCommand(onOpen)}>
+                  open
+                </button>
+                {showOpenRecent ? (
+                  <div className="command-submenu">
+                    <button type="button" disabled={recentDocuments.length === 0}>
+                      open recent
+                    </button>
+                    {recentDocuments.length > 0 ? (
+                      <div className="command-submenu-panel" role="menu">
+                        {recentDocuments.map((document) => (
+                          <button
+                            key={document.filePath}
+                            type="button"
+                            title={document.filePath}
+                            onClick={() =>
+                              void runMenuCommand(() => onOpenRecent(document))
+                            }
+                          >
+                            {document.fileName}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={!canSave}
+                  onClick={() => void runMenuCommand(onSave)}
+                >
+                  save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void runMenuCommand(onSaveAs)}
+                >
+                  save as
+                </button>
+                <div className="command-menu-divider" aria-hidden="true" />
+                <button type="button" onClick={() => void runMenuCommand(onClose)}>
+                  close
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void runMenuCommand(onCloseAll)}
+                >
+                  close all
+                </button>
+                <div className="command-menu-divider" aria-hidden="true" />
+                <button
+                  type="button"
+                  onClick={() => void runMenuCommand(onCloseWindow)}
+                >
+                  quit
+                </button>
+              </nav>
+            ) : null}
+          </div>
+        ) : null}
         {showBrandInAppBar ? (
           <img className="app-bar-brand" src={smolLogo} alt="smol_md" />
         ) : null}

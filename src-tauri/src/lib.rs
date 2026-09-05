@@ -17,6 +17,26 @@ struct OpenedMarkdownFiles(Mutex<Vec<String>>);
 #[derive(Default)]
 struct HasUnsavedChanges(AtomicBool);
 
+// Holds the live "Open Recent" Submenu so `set_recent_documents` can rebuild
+// its contents in place without touching the rest of the native menu. Only
+// populated on macOS, where the native menu (and this submenu) actually
+// exists - see `build_app_menu`.
+#[cfg(target_os = "macos")]
+struct RecentDocumentsMenuState(Mutex<Submenu<tauri::Wry>>);
+
+// Mirrors the frontend's `RecentDocument` shape (see
+// src/utils/recentDocuments.ts). `file_path` isn't read on the Rust side -
+// the menu only ever displays `file_name` - but it's kept on the payload so
+// the shape matches the frontend's own recent-documents record and stays
+// self-describing for anyone reading the command signature later.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RecentDocumentPayload {
+    #[allow(dead_code)]
+    file_path: String,
+    file_name: String,
+}
+
 #[tauri::command]
 fn set_unsaved_changes(has_unsaved: bool, state: tauri::State<HasUnsavedChanges>) {
     state.0.store(has_unsaved, Ordering::SeqCst);
@@ -29,6 +49,75 @@ fn force_quit(app: tauri::AppHandle) {
     }
 
     app.exit(0);
+}
+
+// `window.print()` on the webview opens the OS print panel; on macOS/wry that
+// panel has a "Save as PDF" option, so this one command covers both Print
+// and Export to PDF from the File menu.
+#[tauri::command]
+fn print_document(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.print().map_err(|error| error.to_string())
+}
+
+// Rebuilds ONLY the "Open Recent" submenu in place, leaving the rest of the
+// native menu untouched. The frontend calls this whenever its own
+// `recentDocuments` list changes, since that list (backed by localStorage)
+// is the source of truth and the native menu has no other way to learn about
+// it. A no-op off macOS, where there is no native menu to update.
+#[tauri::command]
+fn set_recent_documents(
+    app: tauri::AppHandle,
+    documents: Vec<RecentDocumentPayload>,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        rebuild_open_recent_submenu(&app, &documents)
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, documents);
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn rebuild_open_recent_submenu(
+    app: &tauri::AppHandle,
+    documents: &[RecentDocumentPayload],
+) -> Result<(), String> {
+    let Some(state) = app.try_state::<RecentDocumentsMenuState>() else {
+        // The menu hasn't finished building yet (or failed to). Nothing to
+        // update - the caller will try again the next time recent documents
+        // change.
+        return Ok(());
+    };
+
+    let submenu = state
+        .0
+        .lock()
+        .map_err(|_| "Open Recent menu lock was poisoned".to_string())?;
+
+    for item in submenu.items().map_err(|error| error.to_string())? {
+        submenu.remove(&item).map_err(|error| error.to_string())?;
+    }
+
+    for (index, document) in documents.iter().enumerate() {
+        let item = MenuItem::with_id(
+            app,
+            format!("recent:{index}"),
+            &document.file_name,
+            true,
+            None::<&str>,
+        )
+        .map_err(|error| error.to_string())?;
+
+        submenu.append(&item).map_err(|error| error.to_string())?;
+    }
+
+    submenu
+        .set_enabled(!documents.is_empty())
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -193,7 +282,9 @@ fn handle_opened_urls(app: &tauri::AppHandle, urls: Vec<Url>) {
 // So on macOS we register our own menu: a custom "quit" item (routed through `on_menu_event`
 // below so we can gate it on unsaved changes) instead of the predefined quit, a full Edit
 // submenu so copy/paste/undo/redo keep working, and no Window submenu / close_window item at
-// all, leaving Cmd+W unbound so it reaches the webview.
+// all. File > Close Tab does bind Cmd+W now, but - unlike a predefined close_window item - it's
+// routed back through `on_menu_event` to the same frontend handler the old unbound-key path
+// called, so closing a tab (or the window, on the last tab) still works the same way.
 #[cfg(target_os = "macos")]
 fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let quit_item = MenuItem::with_id(app, "quit", "Quit smol_md", true, Some("CmdOrCtrl+Q"))?;
@@ -215,6 +306,48 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         ],
     )?;
 
+    // Starts empty and disabled; `set_recent_documents` (called from the
+    // frontend on mount and whenever its recent-documents list changes)
+    // populates it from the same data the old hamburger menu's "open recent"
+    // submenu used, via `RecentDocumentsMenuState` below.
+    let open_recent_submenu = Submenu::with_items(app, "Open Recent", true, &[])?;
+    open_recent_submenu.set_enabled(false)?;
+
+    let new_item = MenuItem::with_id(app, "new", "New", true, Some("CmdOrCtrl+N"))?;
+    let open_item = MenuItem::with_id(app, "open", "Open…", true, Some("CmdOrCtrl+O"))?;
+    let close_tab_item = MenuItem::with_id(app, "close-tab", "Close Tab", true, Some("CmdOrCtrl+W"))?;
+    let close_all_item = MenuItem::with_id(app, "close-all", "Close All", true, None::<&str>)?;
+    let save_item = MenuItem::with_id(app, "save", "Save", true, Some("CmdOrCtrl+S"))?;
+    let save_as_item = MenuItem::with_id(
+        app,
+        "save-as",
+        "Save As…",
+        true,
+        Some("CmdOrCtrl+Shift+S"),
+    )?;
+    let print_item = MenuItem::with_id(app, "print", "Print…", true, Some("CmdOrCtrl+P"))?;
+
+    let file_menu = Submenu::with_items(
+        app,
+        "File",
+        true,
+        &[
+            &new_item,
+            &open_item,
+            &open_recent_submenu,
+            &PredefinedMenuItem::separator(app)?,
+            &close_tab_item,
+            &close_all_item,
+            &PredefinedMenuItem::separator(app)?,
+            &save_item,
+            &save_as_item,
+            &PredefinedMenuItem::separator(app)?,
+            &print_item,
+        ],
+    )?;
+
+    let find_item = MenuItem::with_id(app, "find", "Find", true, Some("CmdOrCtrl+F"))?;
+
     let edit_menu = Submenu::with_items(
         app,
         "Edit",
@@ -227,6 +360,77 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &PredefinedMenuItem::copy(app, None)?,
             &PredefinedMenuItem::paste(app, None)?,
             &PredefinedMenuItem::select_all(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &find_item,
+        ],
+    )?;
+
+    // These route through `on_menu_event` to the frontend, which forwards
+    // them to RichEditor's existing formatting commands - see
+    // `App.tsx`'s "menu-action" listener. They only do anything while the
+    // rich editor is mounted (i.e. not in Source mode).
+    let bold_item = MenuItem::with_id(app, "bold", "Bold", true, Some("CmdOrCtrl+B"))?;
+    let italic_item = MenuItem::with_id(app, "italic", "Italic", true, Some("CmdOrCtrl+I"))?;
+    // Deliberately no accelerator: CmdOrCtrl+Shift+S is already Save As.
+    let strikethrough_item =
+        MenuItem::with_id(app, "strikethrough", "Strikethrough", true, None::<&str>)?;
+    let h1_item = MenuItem::with_id(app, "h1", "Heading 1", true, Some("CmdOrCtrl+1"))?;
+    let h2_item = MenuItem::with_id(app, "h2", "Heading 2", true, Some("CmdOrCtrl+2"))?;
+    let h3_item = MenuItem::with_id(app, "h3", "Heading 3", true, Some("CmdOrCtrl+3"))?;
+    let bullet_list_item =
+        MenuItem::with_id(app, "bullet-list", "Bullet List", true, None::<&str>)?;
+    let ordered_list_item =
+        MenuItem::with_id(app, "ordered-list", "Numbered List", true, None::<&str>)?;
+    let blockquote_item = MenuItem::with_id(app, "blockquote", "Blockquote", true, None::<&str>)?;
+    let code_block_item = MenuItem::with_id(app, "code-block", "Code Block", true, None::<&str>)?;
+    let link_item = MenuItem::with_id(app, "link", "Link", true, Some("CmdOrCtrl+K"))?;
+    let highlight_item = MenuItem::with_id(app, "highlight", "Highlight", true, None::<&str>)?;
+
+    let format_menu = Submenu::with_items(
+        app,
+        "Format",
+        true,
+        &[
+            &bold_item,
+            &italic_item,
+            &strikethrough_item,
+            &PredefinedMenuItem::separator(app)?,
+            &h1_item,
+            &h2_item,
+            &h3_item,
+            &PredefinedMenuItem::separator(app)?,
+            &bullet_list_item,
+            &ordered_list_item,
+            &blockquote_item,
+            &code_block_item,
+            &PredefinedMenuItem::separator(app)?,
+            &link_item,
+            &highlight_item,
+        ],
+    )?;
+
+    let toggle_mode_item = MenuItem::with_id(
+        app,
+        "toggle-mode",
+        "Toggle Source / Rich",
+        true,
+        Some("CmdOrCtrl+`"),
+    )?;
+    let zoom_in_item = MenuItem::with_id(app, "zoom-in", "Zoom In", true, Some("CmdOrCtrl+="))?;
+    let zoom_out_item = MenuItem::with_id(app, "zoom-out", "Zoom Out", true, Some("CmdOrCtrl+-"))?;
+    let zoom_reset_item =
+        MenuItem::with_id(app, "zoom-reset", "Actual Size", true, Some("CmdOrCtrl+0"))?;
+
+    let view_menu = Submenu::with_items(
+        app,
+        "View",
+        true,
+        &[
+            &toggle_mode_item,
+            &PredefinedMenuItem::separator(app)?,
+            &zoom_in_item,
+            &zoom_out_item,
+            &zoom_reset_item,
         ],
     )?;
 
@@ -245,7 +449,21 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         ],
     )?;
 
-    Menu::with_items(app, &[&app_menu, &edit_menu, &window_menu])
+    let menu = Menu::with_items(
+        app,
+        &[
+            &app_menu,
+            &file_menu,
+            &edit_menu,
+            &format_menu,
+            &view_menu,
+            &window_menu,
+        ],
+    )?;
+
+    app.manage(RecentDocumentsMenuState(Mutex::new(open_recent_submenu)));
+
+    Ok(menu)
 }
 
 #[cfg(target_os = "macos")]
@@ -278,7 +496,9 @@ pub fn run() {
             read_markdown_file,
             write_markdown_file,
             set_unsaved_changes,
-            force_quit
+            force_quit,
+            print_document,
+            set_recent_documents
         ]);
 
     #[cfg(target_os = "macos")]
@@ -286,8 +506,15 @@ pub fn run() {
         builder = builder
             .menu(|app| build_app_menu(app))
             .on_menu_event(|app, event| {
-                if event.id() == "quit" {
+                let id = event.id().0.clone();
+
+                if id == "quit" {
                     handle_quit_menu_event(app);
+                } else {
+                    // Every other menu id (including "recent:<index>") is just
+                    // forwarded to the frontend - see App.tsx's "menu-action"
+                    // listener, which knows how to dispatch each one.
+                    let _ = app.emit("menu-action", id);
                 }
             });
     }

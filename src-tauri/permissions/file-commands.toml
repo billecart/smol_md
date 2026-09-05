@@ -7,5 +7,7 @@ commands.allow = [
   "read_markdown_file",
   "write_markdown_file",
   "set_unsaved_changes",
-  "force_quit"
+  "force_quit",
+  "print_document",
+  "set_recent_documents"
 ]
