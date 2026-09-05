@@ -24,6 +24,7 @@ import { lift, setBlockType, toggleMark, wrapIn } from "@milkdown/kit/prose/comm
 import { markRule } from "@milkdown/kit/prose";
 import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from "@milkdown/kit/prose/state";
 import { Decoration, DecorationSet, EditorView } from "@milkdown/kit/prose/view";
+import type { Node as ProseNode } from "@milkdown/kit/prose/model";
 import { history } from "@milkdown/kit/plugin/history";
 import { wrapInList } from "@milkdown/kit/prose/schema-list";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
@@ -296,60 +297,116 @@ const toggleHighlightCommand = $command("ToggleHighlight", (ctx) => () =>
   toggleMark(highlightSchema.type(ctx)),
 );
 
-// Option B: ProseMirror decoration plugin for in-page find.
-const findPluginKey = new PluginKey<{ query: string; activeIndex: number }>(
-  "smolFind",
-);
+type FindMatch = { from: number; to: number };
 
+type FindState = {
+  query: string;
+  activeIndex: number;
+  matches: FindMatch[];
+  decorations: DecorationSet;
+};
+
+const EMPTY_FIND_STATE: FindState = {
+  query: "",
+  activeIndex: 0,
+  matches: [],
+  decorations: DecorationSet.empty,
+};
+
+const findPluginKey = new PluginKey<FindState>("smolFind");
+
+// Matching is per text node and non-overlapping, so a match spanning a mark
+// boundary is not found - unchanged from the original implementation.
+function findMatches(doc: ProseNode, query: string): FindMatch[] {
+  const matches: FindMatch[] = [];
+  const needle = query.toLowerCase();
+
+  doc.descendants((node, pos) => {
+    if (!node.isText || !node.text) return;
+    const text = node.text.toLowerCase();
+    let offset = 0;
+    while (true) {
+      const index = text.indexOf(needle, offset);
+      if (index === -1) break;
+      matches.push({ from: pos + index, to: pos + index + needle.length });
+      offset = index + needle.length;
+    }
+  });
+
+  return matches;
+}
+
+function buildDecorations(
+  doc: ProseNode,
+  matches: FindMatch[],
+  activeIndex: number,
+): DecorationSet {
+  return DecorationSet.create(
+    doc,
+    matches.map((match, index) =>
+      Decoration.inline(match.from, match.to, {
+        class:
+          index === activeIndex
+            ? "smol-find-match smol-find-match-active"
+            : "smol-find-match",
+      }),
+    ),
+  );
+}
+
+// The decorations live in plugin state rather than being rebuilt inside the
+// `decorations` prop. ProseMirror calls that prop on every view update - every
+// selection move, every no-op transaction - and rebuilding there meant walking
+// the whole document each time. Here the walk happens only when the query or
+// the document actually changes.
 const findDecorationPlugin = $prose(
   () =>
-    new Plugin({
+    new Plugin<FindState>({
       key: findPluginKey,
       state: {
         init() {
-          return { query: "", activeIndex: 0 };
+          return EMPTY_FIND_STATE;
         },
-        apply(tr, prev) {
+        apply(tr, prev, _oldState, newState) {
           const meta = tr.getMeta(findPluginKey) as
             | { query: string; activeIndex: number }
             | undefined;
-          return meta ?? prev;
+
+          const query = meta ? meta.query : prev.query;
+          const activeIndex = meta ? meta.activeIndex : prev.activeIndex;
+
+          if (!query) {
+            return prev.query === "" && prev.matches.length === 0
+              ? prev
+              : EMPTY_FIND_STATE;
+          }
+
+          const mustRescan = query !== prev.query || tr.docChanged;
+          const matches = mustRescan
+            ? findMatches(newState.doc, query)
+            : prev.matches;
+
+          // Nothing the decorations depend on moved, so keep the same set and
+          // let ProseMirror skip redrawing entirely.
+          if (
+            !mustRescan &&
+            activeIndex === prev.activeIndex &&
+            query === prev.query
+          ) {
+            return prev;
+          }
+
+          return {
+            query,
+            activeIndex,
+            matches,
+            decorations: buildDecorations(newState.doc, matches, activeIndex),
+          };
         },
       },
       props: {
         decorations(state) {
-          const { query, activeIndex } = findPluginKey.getState(state) ?? {
-            query: "",
-            activeIndex: 0,
-          };
-          if (!query) return DecorationSet.empty;
-
-          const decorations: Decoration[] = [];
-          const q = query.toLowerCase();
-          let matchIndex = 0;
-
-          state.doc.descendants((node, pos) => {
-            if (!node.isText || !node.text) return;
-            const text = node.text.toLowerCase();
-            let offset = 0;
-            while (true) {
-              const idx = text.indexOf(q, offset);
-              if (idx === -1) break;
-              const cls =
-                matchIndex === activeIndex
-                  ? "smol-find-match smol-find-match-active"
-                  : "smol-find-match";
-              decorations.push(
-                Decoration.inline(pos + idx, pos + idx + q.length, {
-                  class: cls,
-                }),
-              );
-              matchIndex++;
-              offset = idx + q.length;
-            }
-          });
-
-          return DecorationSet.create(state.doc, decorations);
+          return findPluginKey.getState(state)?.decorations ?? DecorationSet.empty;
         },
       },
     }),
@@ -494,45 +551,79 @@ function RichEditorInner({
     });
   }, [get, loading, value]);
 
+  // `get` from useEditor is a new function on every render, so these effects
+  // re-run constantly. The ref makes them no-ops unless the find query or the
+  // active match actually changed.
+  const lastDispatchedFind = useRef<{ query: string; activeIndex: number }>({
+    query: "",
+    activeIndex: -1,
+  });
+
   // Sync find query + active index into the ProseMirror decoration plugin.
   useEffect(() => {
     if (loading) return;
+
+    const query = findQuery ?? "";
+    const activeIndex = findActiveIndex ?? 0;
+    const previous = lastDispatchedFind.current;
+
+    if (previous.query === query && previous.activeIndex === activeIndex) {
+      return;
+    }
+
+    const editor = get();
+    if (!editor) return;
+
+    lastDispatchedFind.current = { query, activeIndex };
+
+    editor.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      view.dispatch(
+        view.state.tr.setMeta(findPluginKey, { query, activeIndex }),
+      );
+      // The plugin already walked the document; read the count from it rather
+      // than walking a second time.
+      onFindMatchCount?.(
+        findPluginKey.getState(view.state)?.matches.length ?? 0,
+      );
+    });
+  }, [loading, get, findQuery, findActiveIndex, onFindMatchCount]);
+
+  // Editing while find is open changes the match set, so the count has to be
+  // refreshed from the plugin after the document changes too.
+  useEffect(() => {
+    if (loading || !findQuery) return;
     const editor = get();
     if (!editor) return;
 
     editor.action((ctx) => {
       const view = ctx.get(editorViewCtx);
-      // Compute match count while dispatching so we do one doc walk.
-      let count = 0;
-      if (findQuery) {
-        const q = findQuery.toLowerCase();
-        view.state.doc.descendants((node) => {
-          if (!node.isText || !node.text) return;
-          const text = node.text.toLowerCase();
-          let offset = 0;
-          while (true) {
-            const idx = text.indexOf(q, offset);
-            if (idx === -1) break;
-            count++;
-            offset = idx + q.length;
-          }
-        });
-      }
-      onFindMatchCount?.(count);
-      view.dispatch(
-        view.state.tr.setMeta(findPluginKey, {
-          query: findQuery ?? "",
-          activeIndex: findActiveIndex ?? 0,
-        }),
+      onFindMatchCount?.(
+        findPluginKey.getState(view.state)?.matches.length ?? 0,
       );
     });
-  }, [loading, get, findQuery, findActiveIndex, onFindMatchCount]);
+  }, [loading, get, value, findQuery, onFindMatchCount]);
 
   // Scroll active match into view when activeIndex changes.
+  const lastScrolledTo = useRef<{ query: string; activeIndex: number }>({
+    query: "",
+    activeIndex: -1,
+  });
+
   useEffect(() => {
     if (loading || !findQuery) return;
+
+    const activeIndex = findActiveIndex ?? 0;
+    const previous = lastScrolledTo.current;
+
+    if (previous.query === findQuery && previous.activeIndex === activeIndex) {
+      return;
+    }
+
     const editor = get();
     if (!editor) return;
+
+    lastScrolledTo.current = { query: findQuery, activeIndex };
 
     editor.action((ctx) => {
       const view = ctx.get(editorViewCtx);
