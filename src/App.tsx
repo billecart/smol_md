@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
 import { FindBar } from "./components/FindBar";
 import { RichEditor } from "./components/RichEditor";
 import { SourceEditor } from "./components/SourceEditor";
@@ -13,11 +14,13 @@ import type { OpenDocument } from "./hooks/useDocumentState";
 import { useInPageFind } from "./hooks/useInPageFind";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import {
+  forceQuit,
   isRunningInTauri,
   listenForOpenedMarkdownFiles,
   openMarkdownFile,
   openMarkdownFileAtPath,
   openStartupMarkdownFile,
+  setUnsavedChanges,
   takeOpenedMarkdownFiles,
   saveMarkdownFile,
   saveMarkdownFileAs,
@@ -74,6 +77,85 @@ function App() {
   }, [title]);
 
   useBeforeCloseWarning(hasDirtyDocuments);
+
+  // Cmd+Q (and other app-level quit paths) don't go through the window's
+  // onCloseRequested handler in useBeforeCloseWarning - they go through
+  // Tauri's app-level exit path instead. The Rust side tracks a mirror of
+  // hasDirtyDocuments so it can intercept that exit and ask us to confirm
+  // via the "quit-requested" event below, the same way the window close
+  // path already does.
+  useEffect(() => {
+    if (!isDesktopApp) {
+      return;
+    }
+
+    void setUnsavedChanges(hasDirtyDocuments);
+  }, [isDesktopApp, hasDirtyDocuments]);
+
+  const hasDirtyDocumentsRef = useRef(hasDirtyDocuments);
+
+  useEffect(() => {
+    hasDirtyDocumentsRef.current = hasDirtyDocuments;
+  }, [hasDirtyDocuments]);
+
+  const isHandlingQuitRequestRef = useRef(false);
+
+  useEffect(() => {
+    if (!isDesktopApp) {
+      return;
+    }
+
+    let isCancelled = false;
+    let unlisten: (() => void) | undefined;
+
+    listen("quit-requested", () => {
+      void (async () => {
+        // Guard against re-entrancy so mashing Cmd+Q can't stack multiple
+        // confirmation dialogs.
+        if (isHandlingQuitRequestRef.current) {
+          return;
+        }
+
+        isHandlingQuitRequestRef.current = true;
+
+        try {
+          if (hasDirtyDocumentsRef.current) {
+            const shouldClose = await confirm(
+              "You have unsaved changes. Close without saving?",
+              {
+                title: "Unsaved changes",
+                kind: "warning",
+                okLabel: "Close without saving",
+                cancelLabel: "Keep editing",
+              },
+            );
+
+            if (!shouldClose) {
+              return;
+            }
+          }
+
+          await forceQuit();
+        } finally {
+          isHandlingQuitRequestRef.current = false;
+        }
+      })();
+    })
+      .then((cleanup) => {
+        if (isCancelled) {
+          cleanup();
+          return;
+        }
+
+        unlisten = cleanup;
+      })
+      .catch(() => undefined);
+
+    return () => {
+      isCancelled = true;
+      unlisten?.();
+    };
+  }, [isDesktopApp]);
 
   useEffect(() => {
     if (isMacDesktopApp) {

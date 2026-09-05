@@ -208,6 +208,22 @@ function downloadMarkdown(markdown: string, fileName: string) {
   }, 0);
 }
 
+export async function setUnsavedChanges(hasUnsaved: boolean): Promise<void> {
+  if (!isRunningInTauri()) {
+    return;
+  }
+
+  await invoke("set_unsaved_changes", { hasUnsaved });
+}
+
+export async function forceQuit(): Promise<void> {
+  if (!isRunningInTauri()) {
+    return;
+  }
+
+  await invoke("force_quit");
+}
+
 function ensureMarkdownExtension(path: string) {
   if (/\.(md|markdown)$/i.test(path)) {
     return path;

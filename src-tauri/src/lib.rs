@@ -2,14 +2,32 @@ use std::ffi::OsString;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, RunEvent};
 #[cfg(any(target_os = "macos", target_os = "ios"))]
-use tauri::{RunEvent, Url};
+use tauri::Url;
 
 #[derive(Default)]
 struct OpenedMarkdownFiles(Mutex<Vec<String>>);
+
+#[derive(Default)]
+struct HasUnsavedChanges(AtomicBool);
+
+#[tauri::command]
+fn set_unsaved_changes(has_unsaved: bool, state: tauri::State<HasUnsavedChanges>) {
+    state.0.store(has_unsaved, Ordering::SeqCst);
+}
+
+#[tauri::command]
+fn force_quit(app: tauri::AppHandle) {
+    if let Some(state) = app.try_state::<HasUnsavedChanges>() {
+        state.0.store(false, Ordering::SeqCst);
+    }
+
+    app.exit(0);
+}
 
 #[tauri::command]
 fn get_startup_markdown_file_path() -> Option<String> {
@@ -168,18 +186,33 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(OpenedMarkdownFiles::default())
+        .manage(HasUnsavedChanges::default())
         .invoke_handler(tauri::generate_handler![
             get_startup_markdown_file_path,
             take_opened_markdown_file_paths,
             read_markdown_file,
-            write_markdown_file
+            write_markdown_file,
+            set_unsaved_changes,
+            force_quit
         ])
         .build(tauri::generate_context!())
         .expect("error while building smol_md")
         .run(|_app, _event| {
             #[cfg(any(target_os = "macos", target_os = "ios"))]
-            if let RunEvent::Opened { urls } = _event {
-                handle_opened_urls(_app, urls);
+            if let RunEvent::Opened { ref urls } = _event {
+                handle_opened_urls(_app, urls.clone());
+            }
+
+            if let RunEvent::ExitRequested { api, .. } = _event {
+                let has_unsaved_changes = _app
+                    .try_state::<HasUnsavedChanges>()
+                    .map(|state| state.0.load(Ordering::SeqCst))
+                    .unwrap_or(false);
+
+                if has_unsaved_changes {
+                    api.prevent_exit();
+                    let _ = _app.emit("quit-requested", ());
+                }
             }
         });
 }
