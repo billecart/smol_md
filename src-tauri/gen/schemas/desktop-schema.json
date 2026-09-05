@@ -177,10 +177,10 @@
       "description": "Permission identifier",
       "oneOf": [
         {
-          "description": "Allow smol_md to read and write Markdown files selected by the user.",
+          "description": "Allow smol_md to read and write Markdown files selected by the user, receive files opened from Finder or the dock, and confirm quitting with unsaved work.",
           "type": "string",
           "const": "file-commands",
-          "markdownDescription": "Allow smol_md to read and write Markdown files selected by the user."
+          "markdownDescription": "Allow smol_md to read and write Markdown files selected by the user, receive files opened from Finder or the dock, and confirm quitting with unsaved work."
         },
         {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",
