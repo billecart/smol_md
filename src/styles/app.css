@@ -730,9 +730,12 @@ input:focus-visible {
   margin: 0 0 1.15em;
 }
 
-/* The space above each heading equals its own font size, so a heading can
-   never drift out of step with the air it claims. Space below stays small:
-   a heading belongs to the text it introduces, not to the gap before it. */
+/* The space above each heading is one and a half times its own font size, so a
+   heading can never drift out of step with the air it claims. Notion's rule is
+   a flat 1x, but that is sized against their 1.5 body leading; at the 1.75 this
+   editor needs for monospace, 1x lands under a single body line and the heading
+   crowds the paragraph above it. Space below stays small either way: a heading
+   belongs to the text it introduces, not to the gap before it. */
 .rich-editor .ProseMirror h1,
 .rich-editor .ProseMirror h2,
 .rich-editor .ProseMirror h3 {
@@ -741,14 +744,14 @@ input:focus-visible {
 }
 
 .rich-editor .ProseMirror h1 {
-  margin: 1.875rem 0 0.75rem;
+  margin: 2.8125rem 0 0.75rem;
   font-size: 1.875rem;
   line-height: 1.2;
   letter-spacing: -0.02em;
 }
 
 .rich-editor .ProseMirror h2 {
-  margin: 1.5rem 0 0.6rem;
+  margin: 2.25rem 0 0.6rem;
   font-size: 1.5rem;
   line-height: 1.2;
   letter-spacing: -0.015em;
@@ -757,7 +760,7 @@ input:focus-visible {
 /* Was 0.98rem - smaller than the body it headed, so it read as bold prose
    rather than a heading. */
 .rich-editor .ProseMirror h3 {
-  margin: 1.25rem 0 0.5rem;
+  margin: 1.875rem 0 0.5rem;
   font-size: 1.25rem;
   line-height: 1.25;
   letter-spacing: -0.01em;
