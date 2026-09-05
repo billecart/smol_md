@@ -12,6 +12,7 @@
   --link-color: #004225;
   --link-decoration-color: rgba(0, 66, 37, 0.45);
   --border-subtle: rgba(22, 22, 14, 0.12);
+  --text-error: #8c2f1c;
   --selection-background: rgba(0, 66, 37, 0.16);
   --highlight-background: rgba(0, 66, 37, 0.08);
   --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
@@ -1131,4 +1132,70 @@ input:focus-visible {
   color: var(--text-muted);
   text-align: center;
   margin-top: 32px;
+}
+
+/* The only surface that appears without being asked for. Reserved for things
+   that went wrong, so it stays rare enough not to fight the hidden chrome. */
+.notice {
+  position: fixed;
+  z-index: 50;
+  bottom: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(560px, calc(100% - 48px));
+  padding: 10px 12px 10px 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: rgba(243, 243, 242, 0.97);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 1px 2px rgba(22, 22, 14, 0.08), 0 12px 32px rgba(22, 22, 14, 0.13);
+  /* The entry animation deliberately does not touch opacity. A CSS animation
+     overrides the base rule while it runs, and animations are paused while the
+     window is in the background - animating from opacity 0 could leave a
+     problem message invisible exactly when it fired unattended. */
+  opacity: 1;
+  animation: notice-in 140ms ease-out;
+}
+
+@keyframes notice-in {
+  from {
+    transform: translateX(-50%) translateY(6px);
+  }
+  to {
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notice {
+    animation: none;
+  }
+}
+
+.notice-text {
+  color: var(--text-error);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.notice-dismiss {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.notice-dismiss:hover {
+  background: rgba(22, 22, 14, 0.06);
+  color: var(--text-normal);
 }

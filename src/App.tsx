@@ -3,6 +3,7 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { FindBar } from "./components/FindBar";
+import { Notice, type NoticeMessage } from "./components/Notice";
 import { RichEditor } from "./components/RichEditor";
 import { SourceEditor } from "./components/SourceEditor";
 import { StatusBar } from "./components/StatusBar";
@@ -59,6 +60,18 @@ function App() {
     resetWorkspace,
   } = documentState;
   const [message, setMessage] = useState("Ready");
+  const [notice, setNotice] = useState<NoticeMessage | null>(null);
+  const noticeIdRef = useRef(0);
+
+  // Anything that went wrong goes through here: it still reaches the status
+  // bar, but also raises a notice the user does not have to go looking for.
+  const reportProblem = useCallback((text: string) => {
+    noticeIdRef.current += 1;
+    setNotice({ id: noticeIdRef.current, text });
+    setMessage(text);
+  }, []);
+
+  const dismissNotice = useCallback(() => setNotice(null), []);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [editorMode, setEditorMode] = useState<EditorMode>("rich");
   const [recentDocuments, setRecentDocuments] = useState<RecentDocument[]>([]);
@@ -200,7 +213,7 @@ function App() {
         setMessage(`Opened ${opened.fileName}`);
       })
       .catch((error) => {
-        setMessage(getErrorMessage(error));
+        reportProblem(getErrorMessage(error));
       });
   }, [isDesktopApp, loadDocument, rememberRecentDocument]);
 
@@ -238,7 +251,7 @@ function App() {
           },
           (error) => {
             if (isSubscribed) {
-              setMessage(getErrorMessage(error));
+              reportProblem(getErrorMessage(error));
             }
           },
         );
@@ -257,7 +270,7 @@ function App() {
         }
       } catch (error) {
         if (isSubscribed) {
-          setMessage(getErrorMessage(error));
+          reportProblem(getErrorMessage(error));
         }
       }
     })();
@@ -311,7 +324,7 @@ function App() {
       rememberRecentDocument(opened);
       setMessage(`Opened ${opened.fileName}`);
     } catch (error) {
-      setMessage(getErrorMessage(error));
+      reportProblem(getErrorMessage(error));
     }
   }, [loadDocument, rememberRecentDocument]);
 
@@ -324,7 +337,7 @@ function App() {
         rememberRecentDocument(opened);
         setMessage(`Opened ${opened.fileName}`);
       } catch (error) {
-        setMessage(getErrorMessage(error));
+        reportProblem(getErrorMessage(error));
       }
     },
     [loadDocument, rememberRecentDocument],
@@ -348,7 +361,7 @@ function App() {
       });
       setMessage(`Saved as ${result.fileName}`);
     } catch (error) {
-      setMessage(getErrorMessage(error));
+      reportProblem(getErrorMessage(error));
     }
   }, [markdown, fileName, markSaved, rememberRecentDocument]);
 
@@ -366,7 +379,7 @@ function App() {
 
     try {
       if (isUnsafeEmptyOverwrite(markdown, originalMarkdown, filePath)) {
-        setMessage("Save blocked: empty content was not written over the existing file");
+        reportProblem("Save blocked: empty content was not written over the existing file");
         return;
       }
 
@@ -374,7 +387,7 @@ function App() {
       markSaved(markdown, filePath);
       setMessage("Saved");
     } catch (error) {
-      setMessage(getErrorMessage(error));
+      reportProblem(getErrorMessage(error));
     }
   }, [filePath, markdown, originalMarkdown, markSaved, handleSaveAs]);
 
@@ -571,6 +584,7 @@ function App() {
           onClose={find.close}
         />
       ) : null}
+      <Notice notice={notice} onDismiss={dismissNotice} />
       <div className="top-chrome-hitbox" aria-hidden="true" />
       <div
         className={[
