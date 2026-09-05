@@ -102,31 +102,49 @@ function isInEmptyListItem(state: EditorState, listItem: NodeType) {
   );
 }
 
-// A heading cannot be applied inside a list item, and the underlying command
-// simply reports failure - which looked to the user like the menu item doing
-// nothing at all. Step out of the list first, then apply it. Bounded in case
-// the structure is deeper or lifting stops making progress.
-function liftOutOfLists(view: EditorView, listItem: NodeType) {
+
+// Steps the selection out of any blockquote or list wrapping it. Block
+// commands report failure rather than doing something sensible when the
+// current block is not where the target format is allowed, and a silent
+// failure reads as a menu item that does nothing.
+function liftOutOfWrappers(view: EditorView) {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const { $from } = view.state.selection;
+    let wrapped = false;
 
-    if ($from.depth < 2 || $from.node(-1).type !== listItem) {
-      return;
+    for (let depth = $from.depth; depth > 0; depth -= 1) {
+      const name = $from.node(depth).type.name;
+
+      if (name === "blockquote" || name === "list_item") {
+        wrapped = true;
+        break;
+      }
     }
 
-    if (!liftListItem(listItem)(view.state, view.dispatch)) {
+    if (!wrapped || !lift(view.state, view.dispatch)) {
       return;
     }
   }
 }
 
+// Escalating attempt at a block format: as-is, then out of any wrapper, then
+// flattened to a paragraph. A heading or code block cannot be the first child
+// of a list item, so wrapping one in a list only works once it is a paragraph.
 function runBlockFormat(
   view: EditorView,
   cmd: (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean,
 ) {
   if (cmd(view.state, view.dispatch)) return;
 
-  lift(view.state, view.dispatch);
+  liftOutOfWrappers(view);
+  if (cmd(view.state, view.dispatch)) return;
+
+  const paragraph = view.state.schema.nodes.paragraph;
+
+  if (paragraph && view.state.selection.$from.parent.type !== paragraph) {
+    setBlockType(paragraph)(view.state, view.dispatch);
+  }
+
   cmd(view.state, view.dispatch);
 }
 
@@ -168,7 +186,7 @@ type ContextMenuPosition = {
 function applyHeading(ctx: Ctx, level: number) {
   const view = ctx.get(editorViewCtx);
 
-  liftOutOfLists(view, listItemSchema.type(ctx));
+  liftOutOfWrappers(view);
   callCommand(wrapInHeadingCommand.key, level)(ctx);
 }
 
@@ -899,7 +917,6 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
   };
 
   useImperativeHandle(ref, () => ({ runFormatCommand }));
-
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const menuWidth = 184;
