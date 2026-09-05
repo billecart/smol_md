@@ -8,6 +8,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{Emitter, Manager, RunEvent};
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use tauri::Url;
+#[cfg(target_os = "macos")]
+use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 
 #[derive(Default)]
 struct OpenedMarkdownFiles(Mutex<Vec<String>>);
@@ -182,8 +184,91 @@ fn handle_opened_urls(app: &tauri::AppHandle, urls: Vec<Url>) {
     let _ = app.emit("opened-markdown-files", paths);
 }
 
+// The default Tauri menu on macOS wires `PredefinedMenuItem::quit` to Cmd+Q, which calls
+// AppKit's `terminate:` directly and never emits `RunEvent::ExitRequested` — the unsaved-changes
+// prompt below is dead code for that path. It also puts `close_window` on Cmd+W in the Window
+// submenu, which steals that accelerator from the webview before our JS keydown handler (which
+// closes a tab, or the window with its own confirmation, on the last tab) ever sees it.
+//
+// So on macOS we register our own menu: a custom "quit" item (routed through `on_menu_event`
+// below so we can gate it on unsaved changes) instead of the predefined quit, a full Edit
+// submenu so copy/paste/undo/redo keep working, and no Window submenu / close_window item at
+// all, leaving Cmd+W unbound so it reaches the webview.
+#[cfg(target_os = "macos")]
+fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let quit_item = MenuItem::with_id(app, "quit", "Quit smol_md", true, Some("CmdOrCtrl+Q"))?;
+
+    let app_menu = Submenu::with_items(
+        app,
+        "smol_md",
+        true,
+        &[
+            &PredefinedMenuItem::about(app, None, Some(AboutMetadata::default()))?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::services(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::hide(app, None)?,
+            &PredefinedMenuItem::hide_others(app, None)?,
+            &PredefinedMenuItem::show_all(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &quit_item,
+        ],
+    )?;
+
+    let edit_menu = Submenu::with_items(
+        app,
+        "Edit",
+        true,
+        &[
+            &PredefinedMenuItem::undo(app, None)?,
+            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::cut(app, None)?,
+            &PredefinedMenuItem::copy(app, None)?,
+            &PredefinedMenuItem::paste(app, None)?,
+            &PredefinedMenuItem::select_all(app, None)?,
+        ],
+    )?;
+
+    // Deliberately no Close Window item: Cmd+W has to reach the webview so the
+    // app can close a tab, and only close the window on the last one. A native
+    // menu accelerator would swallow the key before JavaScript ever saw it.
+    let window_menu = Submenu::with_items(
+        app,
+        "Window",
+        true,
+        &[
+            &PredefinedMenuItem::minimize(app, None)?,
+            &PredefinedMenuItem::maximize(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::fullscreen(app, None)?,
+        ],
+    )?;
+
+    Menu::with_items(app, &[&app_menu, &edit_menu, &window_menu])
+}
+
+#[cfg(target_os = "macos")]
+fn handle_quit_menu_event(app: &tauri::AppHandle) {
+    let has_unsaved_changes = app
+        .try_state::<HasUnsavedChanges>()
+        .map(|state| state.0.load(Ordering::SeqCst))
+        .unwrap_or(false);
+
+    if has_unsaved_changes {
+        // Let the frontend confirm and call `force_quit` itself, same as the
+        // `RunEvent::ExitRequested` path below.
+        let _ = app.emit("quit-requested", ());
+    } else {
+        // Nothing to lose: exit immediately from Rust rather than round-tripping to the
+        // frontend, so quitting never depends on the webview/JS still being alive.
+        app.exit(0);
+    }
+}
+
 pub fn run() {
-    tauri::Builder::default()
+    #[allow(unused_mut)]
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(OpenedMarkdownFiles::default())
         .manage(HasUnsavedChanges::default())
@@ -194,7 +279,20 @@ pub fn run() {
             write_markdown_file,
             set_unsaved_changes,
             force_quit
-        ])
+        ]);
+
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder
+            .menu(|app| build_app_menu(app))
+            .on_menu_event(|app, event| {
+                if event.id() == "quit" {
+                    handle_quit_menu_event(app);
+                }
+            });
+    }
+
+    builder
         .build(tauri::generate_context!())
         .expect("error while building smol_md")
         .run(|_app, _event| {
