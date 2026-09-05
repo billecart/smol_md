@@ -132,7 +132,13 @@ input:focus-visible {
   gap: 8px;
 }
 
+/* Pinned to the flexible middle column rather than left to auto-placement.
+   The brand logo is absolutely positioned and so is not a grid item, which
+   means the number of real children changes with the platform - on macOS the
+   hamburger is not rendered at all. Without this the drag region lands in an
+   `auto` column, collapses to zero width, and the window cannot be dragged. */
 .window-drag-region {
+  grid-column: 2;
   align-self: stretch;
   min-width: 0;
 }
