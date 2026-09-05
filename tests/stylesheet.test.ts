@@ -24,14 +24,12 @@ test("every css custom property that is used is also declared", () => {
   assert.deepEqual(undeclared, []);
 });
 
-// TODO: enable once the Google Fonts @import is resolved (see QA report).
-// The stylesheet intentionally imports IBM Plex fonts from Google Fonts on
-// line 1; removing that import is a separate, deliberate decision for the
-// user to make, not something this QA pass should force through.
-// test("the stylesheet imports no remote resources", () => {
-//   const remoteImports = Array.from(
-//     css.matchAll(/@import\s+url\(\s*["']?(https?:\/\/[^"')]+)["']?\s*\)/g),
-//   ).map((match) => match[1]);
-//
-//   assert.deepEqual(remoteImports, []);
-// });
+// The fonts are self-hosted via @fontsource so the app renders identically on
+// every machine and never waits on a CDN at startup. This keeps it that way.
+test("the stylesheet imports no remote resources", () => {
+  const remoteImports = Array.from(
+    css.matchAll(/@import\s+url\(\s*["']?(https?:\/\/[^"')]+)["']?\s*\)/g),
+  ).map((match) => match[1]);
+
+  assert.deepEqual(remoteImports, []);
+});
