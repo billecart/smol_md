@@ -137,40 +137,48 @@ function App() {
       }
     };
 
-    void takeOpenedMarkdownFiles()
-      .then((files) => {
-        if (isSubscribed) {
-          openFiles(files);
-        }
-      })
-      .catch((error) => {
-        if (isSubscribed) {
-          setMessage(getErrorMessage(error));
-        }
-      });
-
     let unlisten: (() => void) | undefined;
 
-    void listenForOpenedMarkdownFiles(
-      (files) => {
+    // Order matters. Dropping a file on the dock icon of a closed app makes
+    // macOS emit `opened-markdown-files` while the webview is still starting,
+    // so the event can land in the gap between draining the queue and the
+    // listener being ready - the file is then silently lost and the user sees
+    // an empty draft instead. Registering the listener first closes that gap:
+    // anything emitted beforehand is still queued on the Rust side, and
+    // draining it afterwards is safe because the queue is drained, not copied.
+    void (async () => {
+      try {
+        const listener = await listenForOpenedMarkdownFiles(
+          (files) => {
+            if (isSubscribed) {
+              openFiles(files);
+            }
+          },
+          (error) => {
+            if (isSubscribed) {
+              setMessage(getErrorMessage(error));
+            }
+          },
+        );
+
+        if (!isSubscribed) {
+          listener();
+          return;
+        }
+
+        unlisten = listener;
+
+        const files = await takeOpenedMarkdownFiles();
+
         if (isSubscribed) {
           openFiles(files);
         }
-      },
-      (error) => {
+      } catch (error) {
         if (isSubscribed) {
           setMessage(getErrorMessage(error));
         }
-      },
-    )
-      .then((listener) => {
-        unlisten = listener;
-      })
-      .catch((error) => {
-        if (isSubscribed) {
-          setMessage(getErrorMessage(error));
-        }
-      });
+      }
+    })();
 
     return () => {
       isSubscribed = false;
@@ -288,6 +296,39 @@ function App() {
     }
   }, [filePath, markdown, originalMarkdown, markSaved, handleSaveAs]);
 
+  // hasDirtyDocuments is a boolean derived from `documents` on every render,
+  // but its *value* only flips when a document's dirty state actually
+  // changes (not on every keystroke once a document is already dirty), so
+  // this stays stable across most keystrokes even though it's recomputed
+  // every render.
+  //
+  // Declared before the per-document close handlers because closing the last
+  // tab falls through to closing the window.
+  const handleCloseWindow = useCallback(async () => {
+    if (!isDesktopApp) {
+      window.close();
+      return;
+    }
+
+    if (hasDirtyDocuments) {
+      const shouldClose = await confirm(
+        "You have unsaved changes. Close without saving?",
+        {
+          title: "Unsaved changes",
+          kind: "warning",
+          okLabel: "Close without saving",
+          cancelLabel: "Keep editing",
+        },
+      );
+
+      if (!shouldClose) {
+        return;
+      }
+    }
+
+    await getCurrentWindow().destroy();
+  }, [isDesktopApp, hasDirtyDocuments]);
+
   // Genuinely depends on `documents` (to look up the document by id) and on
   // `closeDocument`, which - like loadDocument - can't be made
   // documents-independent (see useDocumentState.ts). Left unstable on
@@ -310,9 +351,18 @@ function App() {
     [documents, closeDocument, confirmDiscard],
   );
 
+  // Closing the last remaining tab has nowhere to go: closeDocument would
+  // just swap in a fresh blank draft, so the window would appear to ignore
+  // the keystroke. Close the window instead, which is what Cmd+W means on
+  // macOS once the last document is gone.
   const handleCloseActiveDocument = useCallback(async () => {
+    if (documents.length <= 1) {
+      await handleCloseWindow();
+      return;
+    }
+
     await handleCloseDocument(activeDocumentId);
-  }, [activeDocumentId, handleCloseDocument]);
+  }, [documents.length, activeDocumentId, handleCloseDocument, handleCloseWindow]);
 
   // Genuinely depends on `documents` (to find dirty documents) and
   // `resetWorkspace`; `documents` changes every keystroke so this can't be
@@ -344,35 +394,6 @@ function App() {
     setMessage("Closed all documents");
   }, [documents, isDesktopApp, resetWorkspace]);
 
-  // hasDirtyDocuments is a boolean derived from `documents` on every render,
-  // but its *value* only flips when a document's dirty state actually
-  // changes (not on every keystroke once a document is already dirty), so
-  // this stays stable across most keystrokes even though it's recomputed
-  // every render.
-  const handleCloseWindow = useCallback(async () => {
-    if (!isDesktopApp) {
-      window.close();
-      return;
-    }
-
-    if (hasDirtyDocuments) {
-      const shouldClose = await confirm(
-        "You have unsaved changes. Close without saving?",
-        {
-          title: "Unsaved changes",
-          kind: "warning",
-          okLabel: "Close without saving",
-          cancelLabel: "Keep editing",
-        },
-      );
-
-      if (!shouldClose) {
-        return;
-      }
-    }
-
-    await getCurrentWindow().destroy();
-  }, [isDesktopApp, hasDirtyDocuments]);
 
   // Genuinely depends on `markdown`: switching to source mode snapshots the
   // current markdown via setMarkdown. Changes every keystroke, left
