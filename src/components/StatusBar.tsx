@@ -4,6 +4,7 @@ import {
   countWords,
   type CounterMode,
 } from "../utils/editorStats";
+import { getSaveState, type SaveState } from "../utils/saveState";
 
 type StatusBarProps = {
   filePath: string | null;
@@ -31,14 +32,19 @@ function StatusBarComponent({
   );
   const counterValue = counterMode === "words" ? words : characters;
   const counterLabel = counterMode === "words" ? "word" : "char";
-  const saveState = getSaveState(isDirty, lastSavedAt, Boolean(filePath));
+  const saveState = getSaveState({
+    isDirty,
+    hasSavedAt: Boolean(lastSavedAt),
+    hasFilePath: Boolean(filePath),
+  });
+  const saveLabel = formatSaveState(saveState, lastSavedAt);
   const documentLabel = filePath ?? "untitled draft";
   const statusMessage = message === "Ready" ? "" : message;
 
   return (
     <footer className="status-bar">
       <span className="path-text">{documentLabel}</span>
-      <span>{saveState}</span>
+      <span>{saveLabel}</span>
       <span className="status-message">{statusMessage}</span>
       <button
         type="button"
@@ -57,18 +63,15 @@ function StatusBarComponent({
 
 export const StatusBar = memo(StatusBarComponent);
 
-function getSaveState(
-  isDirty: boolean,
-  lastSavedAt: Date | null,
-  hasFilePath: boolean,
-) {
-  if (isDirty) {
-    return "Unsaved";
+function formatSaveState(saveState: SaveState, lastSavedAt: Date | null) {
+  switch (saveState) {
+    case "unsaved-changes":
+      return "Unsaved";
+    case "saved-at":
+      return `saved ${lastSavedAt!.toLocaleTimeString()}`;
+    case "saved":
+      return "saved";
+    case "new-draft":
+      return "";
   }
-
-  if (lastSavedAt) {
-    return `saved ${lastSavedAt.toLocaleTimeString()}`;
-  }
-
-  return hasFilePath ? "saved" : "Unsaved";
 }
