@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import { memo, useDeferredValue, useMemo, useState } from "react";
 import {
   countCharacters,
   countWords,
@@ -21,8 +21,14 @@ function StatusBarComponent({
   message,
 }: StatusBarProps) {
   const [counterMode, setCounterMode] = useState<CounterMode>("words");
-  const words = useMemo(() => countWords(markdown), [markdown]);
-  const characters = useMemo(() => countCharacters(markdown), [markdown]);
+  // Counting scans the whole document, so keep it off the keystroke path. The
+  // counter is allowed to lag a frame or two behind the text; typing is not.
+  const countedMarkdown = useDeferredValue(markdown);
+  const words = useMemo(() => countWords(countedMarkdown), [countedMarkdown]);
+  const characters = useMemo(
+    () => countCharacters(countedMarkdown),
+    [countedMarkdown],
+  );
   const counterValue = counterMode === "words" ? words : characters;
   const counterLabel = counterMode === "words" ? "word" : "char";
   const saveState = getSaveState(isDirty, lastSavedAt, Boolean(filePath));
