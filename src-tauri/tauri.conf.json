@@ -13,8 +13,8 @@
       "windows": [
       {
         "title": "smol_md",
-        "width": 800,
-        "height": 600,
+        "width": 1100,
+        "height": 820,
         "decorations": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true
