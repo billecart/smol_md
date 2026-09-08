@@ -13,11 +13,15 @@ use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 #[cfg(target_os = "macos")]
 use objc2::rc::Retained;
 #[cfg(target_os = "macos")]
-use objc2::runtime::{NSObjectProtocol, ProtocolObject};
+use objc2::runtime::{AnyObject, Bool, NSObject, NSObjectProtocol, ProtocolObject};
+#[cfg(target_os = "macos")]
+use objc2::{define_class, msg_send, DefinedClass, MainThreadMarker, MainThreadOnly};
 #[cfg(target_os = "macos")]
 use objc2_app_kit::{NSPrintInfo, NSPrintJobSavingURL, NSPrintOperation, NSPrintSaveJob};
 #[cfg(target_os = "macos")]
-use objc2_foundation::{NSString, NSURL};
+use objc2_foundation::{
+    NSCopying, NSDate, NSDefaultRunLoopMode, NSRunLoop, NSString, NSURL,
+};
 #[cfg(target_os = "macos")]
 use objc2_web_kit::WKWebView;
 
@@ -104,18 +108,63 @@ fn export_pdf(window: tauri::WebviewWindow, path: String) -> Result<(), String> 
     }
 }
 
+// AppKit reports the outcome of an asynchronous print operation by messaging
+// a delegate, so there has to be an Objective-C object to receive it. This is
+// the whole of it: one method, two flags.
+#[cfg(target_os = "macos")]
+#[derive(Default)]
+struct PdfExportState {
+    finished: std::cell::Cell<bool>,
+    succeeded: std::cell::Cell<bool>,
+}
+
+#[cfg(target_os = "macos")]
+define_class!(
+    #[unsafe(super(NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "SmolMdPdfExportDelegate"]
+    #[ivars = PdfExportState]
+    struct PdfExportDelegate;
+
+    unsafe impl NSObjectProtocol for PdfExportDelegate {}
+
+    impl PdfExportDelegate {
+        #[unsafe(method(printOperationDidRun:success:contextInfo:))]
+        fn print_operation_did_run(
+            &self,
+            _operation: *mut AnyObject,
+            success: Bool,
+            _context: *mut std::ffi::c_void,
+        ) {
+            self.ivars().succeeded.set(success.as_bool());
+            self.ivars().finished.set(true);
+        }
+    }
+);
+
+#[cfg(target_os = "macos")]
+impl PdfExportDelegate {
+    fn new(mtm: MainThreadMarker) -> Retained<Self> {
+        let this = mtm.alloc::<Self>().set_ivars(PdfExportState::default());
+        unsafe { msg_send![super(this), init] }
+    }
+}
+
 // Drives WKWebView's own print machinery directly instead of going through
-// wry's `print()`/`print_with_options()`, which always calls
-// `runOperationModalForWindow...` and therefore always shows the print
-// panel (see wry-0.54.4 src/wkwebview/mod.rs, print_with_options). Getting a
-// silent save-to-PDF instead means stopping one step earlier: build the
-// NSPrintOperation ourselves, point its NSPrintInfo at a file instead of a
-// printer, and call `runOperation` (not the modal-for-window variant).
+// wry's `print()`/`print_with_options()`, which always shows the print panel
+// (see wry-0.54.4 src/wkwebview/mod.rs, print_with_options). Getting a silent
+// save-to-PDF instead means stopping one step earlier: build the
+// NSPrintOperation ourselves and point its NSPrintInfo at a file rather than
+// a printer.
 #[cfg(target_os = "macos")]
 fn export_pdf_from_webview(
     platform: &tauri::webview::PlatformWebview,
     path: &str,
 ) -> Result<(), String> {
+    let Some(mtm) = MainThreadMarker::new() else {
+        return Err("PDF export has to run on the main thread.".to_string());
+    };
+
     // Safety: on macOS, `PlatformWebview::inner` returns the `WKWebView *`
     // backing this window. `with_webview` runs this closure on the main
     // thread while the window is alive, so the pointer is valid for the
@@ -131,7 +180,14 @@ fn export_pdf_from_webview(
         return Err("This version of macOS cannot export to PDF.".to_string());
     }
 
-    let print_info = NSPrintInfo::sharedPrintInfo();
+    let Some(window) = webview.window() else {
+        return Err("Could not find the window to export a PDF from.".to_string());
+    };
+
+    // A *copy* of the shared print info, never the shared instance itself.
+    // The shared one belongs to the whole application; pointing it at a file
+    // would leave every later print job saving to that same path.
+    let print_info = NSPrintInfo::sharedPrintInfo().copy();
     print_info.setTopMargin(PDF_EXPORT_MARGIN_POINTS);
     print_info.setRightMargin(PDF_EXPORT_MARGIN_POINTS);
     print_info.setBottomMargin(PDF_EXPORT_MARGIN_POINTS);
@@ -158,10 +214,44 @@ fn export_pdf_from_webview(
     print_operation.setShowsPrintPanel(false);
     print_operation.setShowsProgressPanel(false);
 
-    // Deliberately `runOperation`, not
-    // `runOperationModalForWindow_delegate_didRunSelector_contextInfo` - the
-    // modal variant is what makes wry's own print() show a panel.
-    if print_operation.runOperation() {
+    // This has to be the modal-for-window variant, and the reason is not
+    // obvious. WKWebView lays out its printed pages in the web content
+    // process, so producing a PDF means waiting on a reply from another
+    // process. `runOperation` blocks the main thread outright, so that reply
+    // can never arrive: WebKit is left measuring a zero-sized page, decides
+    // the document is effectively infinite, and writes blank pages until the
+    // disk fills - a two-line document reached 645 MB before it was killed.
+    // The modal variant spins the run loop instead, which lets the reply
+    // through. Both panels are off, so nothing is shown either way; the panel
+    // in wry's own print() comes from wry leaving them on, not from this call.
+    let delegate = PdfExportDelegate::new(mtm);
+    unsafe {
+        print_operation.runOperationModalForWindow_delegate_didRunSelector_contextInfo(
+            &window,
+            Some(&delegate),
+            Some(objc2::sel!(printOperationDidRun:success:contextInfo:)),
+            std::ptr::null_mut(),
+        );
+    }
+
+    // Because it is asynchronous, the run loop has to be pumped here until
+    // the delegate hears back. The timeout is a backstop against a wedged web
+    // content process; a normal document finishes in well under a second.
+    let run_loop = NSRunLoop::currentRunLoop();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+
+    while !delegate.ivars().finished.get() {
+        if std::time::Instant::now() > deadline {
+            return Err("Exporting to PDF timed out.".to_string());
+        }
+
+        unsafe {
+            let until = NSDate::dateWithTimeIntervalSinceNow(0.02);
+            run_loop.runMode_beforeDate(NSDefaultRunLoopMode, &until);
+        }
+    }
+
+    if delegate.ivars().succeeded.get() {
         Ok(())
     } else {
         Err("Exporting to PDF failed.".to_string())

@@ -1293,6 +1293,14 @@ input:focus-visible {
     display: none !important;
   }
 
+  /* Paper has no viewport, so the screen's `min-height: 100vh` would pad
+     every export out to a full page of empty space past the last line. */
+  html,
+  body {
+    min-height: 0;
+    height: auto;
+  }
+
   .app-shell {
     min-height: 0;
     background: #fff;

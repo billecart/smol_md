@@ -29,12 +29,17 @@ objc2-app-kit = { version = "0.3.2", default-features = false, features = [
     "objc2-core-foundation",
     "NSPrintInfo",
     "NSPrintOperation",
+    "NSResponder",
+    "NSView",
+    "NSWindow",
 ] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = [
     "std",
     "NSString",
     "NSURL",
     "NSDictionary",
+    "NSDate",
+    "NSRunLoop",
 ] }
 objc2-web-kit = { version = "0.3.2", default-features = false, features = [
     "std",
