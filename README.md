@@ -111,6 +111,40 @@ npm test
 
 A hand-rolled runner with no dependencies. It covers the pure logic — the document model, word counts, keyboard shortcuts, recent files, heading extraction, find, zoom, tab labels, save state and file paths — plus a stylesheet check that fails the build if a CSS variable is used without being declared, or if anything is loaded from a URL.
 
+## Releasing a signed macOS build
+
+The app is code-signed with a Developer ID certificate and notarised by Apple.
+Without this macOS refuses to open a downloaded copy — an unsigned bundle is
+reported as "damaged", and a signed-but-unnotarised one as coming from an
+unidentified developer.
+
+Credentials live in the shell, never in the repo. The app-specific password
+comes from appleid.apple.com (Sign-In and Security → App-Specific Passwords),
+and is not your Apple ID password.
+
+```sh
+export APPLE_SIGNING_IDENTITY="Developer ID Application: <your name> (<team id>)"
+export APPLE_ID="<your apple id email>"
+export APPLE_PASSWORD="<app-specific password>"
+export APPLE_TEAM_ID="<team id>"
+
+npm run tauri build
+```
+
+Tauri signs with the hardened runtime and submits to Apple automatically when
+those are set; notarisation adds a few minutes to the build. To check the
+result:
+
+```sh
+spctl -a -t exec -vvv src-tauri/target/release/bundle/macos/smol_md.app
+```
+
+`accepted` means it will open cleanly on someone else's machine.
+`source=Unnotarized Developer ID` means it signed but did not notarise.
+
+For test builds none of this is needed — `npm run tauri build -- --bundles app`
+skips both the DMG and the notarisation wait.
+
 ## How big a file can it handle?
 
 The whole document sits in the DOM, so cost grows with the file. Typing one character in Source mode, measured on Apple Silicon:
