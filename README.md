@@ -7,17 +7,15 @@ Open Markdown files, edit them visually or as plain text, and save them back to 
 
 I'm no real coder, so this is entirely vibecoded within 24 hours.
 
-## Version 1.0.0
+## Download
 
-### macOS
+Built versions live on the [releases
+page](https://github.com/billecart/smol_md/releases/latest) - a `.dmg`
+for Apple Silicon Macs, and an installer, an MSI and a portable `.exe` for
+Windows.
 
-- `release/smol_md_1.0.0_aarch64.dmg` — Apple Silicon (M-series) disk image
-
-### Windows
-
-- `release/smol_md_1.0.0_x64-setup.exe` — Windows installer
-- `release/smol_md_1.0.0_x64_en-US.msi` — MSI package
-- `release/smol_md_1.0.0_portable.exe` — portable executable
+The macOS build is signed and notarised by Apple, so it opens without the
+"unidentified developer" or "damaged" warnings.
 
 ## Working with files
 
@@ -98,7 +96,7 @@ npm install
 
 ```
 src-tauri/target/release/bundle/macos/smol_md.app
-src-tauri/target/release/bundle/dmg/smol_md_1.0.0_aarch64.dmg
+src-tauri/target/release/bundle/dmg/smol_md_1.1.1_aarch64.dmg
 ```
 
 On Windows, `.\scripts\build-windows.ps1` builds and copies the artifacts into `release/`.
@@ -129,6 +127,27 @@ export APPLE_PASSWORD="<app-specific password>"
 export APPLE_TEAM_ID="<team id>"
 
 npm run tauri build
+```
+
+An App Store Connect API key works too, and avoids the app-specific password.
+Download the `.p8` once from App Store Connect (Users and Access → Integrations
+→ Keys), keep it outside the repo, and `chmod 600` it. `APPLE_API_ISSUER` is
+the Issuer ID shown above the key list - a UUID, not the key ID.
+
+```sh
+export APPLE_SIGNING_IDENTITY="Developer ID Application: <your name> (<team id>)"
+export APPLE_TEAM_ID="<team id>"
+export APPLE_API_KEY="<key id, the 10 characters in the filename>"
+export APPLE_API_ISSUER="<issuer uuid>"
+export APPLE_API_KEY_PATH="$HOME/private_keys/AuthKey_<key id>.p8"
+
+npm run tauri build
+```
+
+To check the credentials without waiting on a whole build:
+
+```sh
+xcrun notarytool history --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" --issuer "$APPLE_API_ISSUER"
 ```
 
 Tauri signs with the hardened runtime and submits to Apple automatically when
