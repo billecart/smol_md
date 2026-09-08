@@ -797,6 +797,26 @@ input:focus-visible {
   margin: 0.25em 0 0.35em;
 }
 
+/* A long URL is a single unbreakable token and will happily run past the
+   column and out of the window. `break-word` only breaks a word that cannot
+   fit on a line of its own, so ordinary prose is untouched, and unlike
+   `anywhere` it does not change intrinsic sizing, which tables depend on.
+   Code blocks are deliberately excluded: they scroll instead of wrapping. */
+.rich-editor .ProseMirror :not(pre) > code,
+.rich-editor .ProseMirror p,
+.rich-editor .ProseMirror li,
+.rich-editor .ProseMirror h1,
+.rich-editor .ProseMirror h2,
+.rich-editor .ProseMirror h3,
+.rich-editor .ProseMirror a {
+  overflow-wrap: break-word;
+}
+
+/* The source editor is a plain textarea and overflows on the same tokens. */
+.source-editor {
+  overflow-wrap: break-word;
+}
+
 .rich-editor .ProseMirror a {
   color: var(--link-color);
   text-decoration-line: underline;
