@@ -11,8 +11,7 @@ I'm no real coder, so this is entirely vibecoded within 24 hours.
 
 Built versions live on the [releases
 page](https://github.com/billecart/smol_md/releases/latest) - a `.dmg`
-for Apple Silicon Macs, and an installer, an MSI and a portable `.exe` for
-Windows.
+for Apple Silicon Macs, and an installer or an MSI for Windows.
 
 The macOS build is signed and notarised by Apple, so it opens without the
 "unidentified developer" or "damaged" warnings.
