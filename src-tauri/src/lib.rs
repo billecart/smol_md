@@ -244,8 +244,7 @@ fn take_opened_markdown_file_paths(state: tauri::State<OpenedMarkdownFiles>) -> 
         .unwrap_or_default()
 }
 
-#[tauri::command]
-fn read_markdown_file(path: String) -> Result<String, String> {
+fn read_markdown_file_blocking(path: String) -> Result<String, String> {
     let path = PathBuf::from(path);
 
     if !is_markdown_path(&path) {
@@ -255,8 +254,18 @@ fn read_markdown_file(path: String) -> Result<String, String> {
     fs::read_to_string(&path).map_err(|error| format!("Could not read file: {error}"))
 }
 
+// Async, and the read itself runs on a blocking thread. Tauri executes
+// synchronous commands on the main thread, and a cloud-backed file that is
+// online-only has to be downloaded before its first byte can be read - which
+// froze the whole window until the download finished.
 #[tauri::command]
-fn write_markdown_file(path: String, contents: String) -> Result<(), String> {
+async fn read_markdown_file(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || read_markdown_file_blocking(path))
+        .await
+        .map_err(|error| format!("Could not read file: {error}"))?
+}
+
+fn write_markdown_file_blocking(path: String, contents: String) -> Result<(), String> {
     let path = PathBuf::from(path);
 
     if !is_markdown_path(&path) {
@@ -270,6 +279,15 @@ fn write_markdown_file(path: String, contents: String) -> Result<(), String> {
     }
 
     write_file_durably(&path, contents.as_bytes())
+}
+
+// Same reasoning as read_markdown_file: saving into a cloud folder can block
+// for as long as the provider takes, and that must not be the main thread.
+#[tauri::command]
+async fn write_markdown_file(path: String, contents: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || write_markdown_file_blocking(path, contents))
+        .await
+        .map_err(|error| format!("Could not finish save: {error}"))?
 }
 
 fn existing_file_has_content(path: &Path) -> Result<bool, String> {
@@ -671,7 +689,7 @@ mod tests {
         let path = dir.join("notes.md");
         fs::write(&path, "original").unwrap();
 
-        let result = write_markdown_file(path.display().to_string(), String::new());
+        let result = write_markdown_file_blocking(path.display().to_string(), String::new());
 
         assert!(result.is_err());
         assert_eq!(fs::read_to_string(&path).unwrap(), "original");
@@ -685,7 +703,7 @@ mod tests {
         let path = dir.join("notes.md");
         fs::write(&path, "original").unwrap();
 
-        write_markdown_file(path.display().to_string(), "updated".to_string()).unwrap();
+        write_markdown_file_blocking(path.display().to_string(), "updated".to_string()).unwrap();
 
         assert_eq!(fs::read_to_string(&path).unwrap(), "updated");
         assert!(!PathBuf::from(format!("{}.bak", path.display())).exists());
@@ -699,10 +717,10 @@ mod tests {
         let path = dir.join("заметка.md");
         let text = "# Привет\n\nТекст заметки.";
 
-        write_markdown_file(path.display().to_string(), text.to_string()).unwrap();
+        write_markdown_file_blocking(path.display().to_string(), text.to_string()).unwrap();
 
         assert_eq!(
-            read_markdown_file(path.display().to_string()).unwrap(),
+            read_markdown_file_blocking(path.display().to_string()).unwrap(),
             text
         );
         let _ = fs::remove_dir_all(dir);
