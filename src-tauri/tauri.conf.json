@@ -10,7 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-      "windows": [
+    "windows": [
       {
         "title": "smol_md",
         "width": 1100,
@@ -20,7 +20,6 @@
         "hiddenTitle": true
       }
     ],
-
     "security": {
       "csp": null
     }
@@ -37,12 +36,18 @@
     "longDescription": "A tiny focused Windows Markdown editor for opening one file, editing it, and saving it back as Markdown.",
     "fileAssociations": [
       {
-        "ext": ["md", "markdown"],
+        "ext": [
+          "md",
+          "markdown"
+        ],
         "name": "Markdown document",
         "description": "Markdown document",
         "role": "Editor",
         "mimeType": "text/markdown"
       }
-    ]
+    ],
+    "macOS": {
+      "signingIdentity": "-"
+    }
   }
 }

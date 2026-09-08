@@ -655,6 +655,26 @@ pub fn run() {
             });
     }
 
+    // `decorations: true` in tauri.conf.json is there for macOS, where the
+    // native traffic lights sit over the app's own bar in Overlay style. On
+    // Windows the same setting draws a full native title bar *above* the
+    // custom one the app already renders, so the window arrives with two.
+    // Turn the native frame off there and let the custom chrome be the only
+    // title bar, which is what the app is built for.
+    #[cfg(target_os = "windows")]
+    {
+        builder = builder.setup(|app| {
+            // Every window rather than a lookup by label: the config sets no
+            // label, so a lookup would depend on Tauri's default staying
+            // "main" and would fail silently if it ever changed.
+            for (_label, window) in app.webview_windows() {
+                let _ = window.set_decorations(false);
+            }
+
+            Ok(())
+        });
+    }
+
     builder
         .build(tauri::generate_context!())
         .expect("error while building smol_md")
