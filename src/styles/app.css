@@ -807,9 +807,18 @@ input:focus-visible {
 .rich-editor .ProseMirror li,
 .rich-editor .ProseMirror h1,
 .rich-editor .ProseMirror h2,
-.rich-editor .ProseMirror h3,
-.rich-editor .ProseMirror a {
+.rich-editor .ProseMirror h3 {
   overflow-wrap: break-word;
+}
+
+/* Links need `anywhere`, not `break-word`. Chromium finds break opportunities
+   inside a long URL at its slashes and underscores, so break-word is enough
+   there - but the app runs on WebKit, which does not, and a URL with no
+   hyphens (a Google Docs link, say) sailed straight past the margin.
+   `anywhere` is scoped to links so it cannot affect the intrinsic sizing that
+   table layout depends on. */
+.rich-editor .ProseMirror a {
+  overflow-wrap: anywhere;
 }
 
 /* The source editor is a plain textarea and overflows on the same tokens. */
