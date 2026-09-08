@@ -126,8 +126,7 @@ fn export_pdf_from_webview(
     }
     let webview: &WKWebView = unsafe { &*webview_ptr };
 
-    let can_print =
-        unsafe { webview.respondsToSelector(objc2::sel!(printOperationWithPrintInfo:)) };
+    let can_print = webview.respondsToSelector(objc2::sel!(printOperationWithPrintInfo:));
     if !can_print {
         return Err("This version of macOS cannot export to PDF.".to_string());
     }
@@ -634,6 +633,7 @@ pub fn run() {
             set_unsaved_changes,
             force_quit,
             print_document,
+            export_pdf,
             set_recent_documents
         ]);
 
