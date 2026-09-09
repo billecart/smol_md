@@ -57,6 +57,12 @@ import {
   MARKDOWN_LINK_INPUT,
   splitMarkdownLinks,
 } from "../utils/markdownLinks";
+import {
+  backspaceOutdentsListItem,
+  enterLeavesEmptyListItem,
+  liftOutOfWrappers,
+  runBlockFormat,
+} from "../utils/editorCommands";
 import { TableOfContents } from "./TableOfContents";
 import { useTableOfContents, type TocEntry } from "../hooks/useTableOfContents";
 import "@milkdown/kit/prose/view/style/prosemirror.css";
@@ -81,78 +87,6 @@ function closeLinkDialog() {
   _linkDialogCoords = null;
   _linkDialogOnSubmit = null;
   _linkDialogSync?.();
-}
-
-// True when the caret sits in the first paragraph of a list item, at its very
-// start - the position where Backspace should outdent rather than merge the
-// item into the one above it.
-function isAtStartOfListItem(state: EditorState, listItem: NodeType) {
-  const { $from, empty } = state.selection;
-
-  return (
-    empty &&
-    $from.parentOffset === 0 &&
-    $from.depth > 1 &&
-    $from.node(-1).type === listItem &&
-    $from.index(-1) === 0
-  );
-}
-
-function isInEmptyListItem(state: EditorState, listItem: NodeType) {
-  const { $from, empty } = state.selection;
-
-  return (
-    empty &&
-    $from.depth > 1 &&
-    $from.node(-1).type === listItem &&
-    $from.node(-1).textContent.length === 0
-  );
-}
-
-
-// Steps the selection out of any blockquote or list wrapping it. Block
-// commands report failure rather than doing something sensible when the
-// current block is not where the target format is allowed, and a silent
-// failure reads as a menu item that does nothing.
-function liftOutOfWrappers(view: EditorView) {
-  for (let attempt = 0; attempt < 10; attempt += 1) {
-    const { $from } = view.state.selection;
-    let wrapped = false;
-
-    for (let depth = $from.depth; depth > 0; depth -= 1) {
-      const name = $from.node(depth).type.name;
-
-      if (name === "blockquote" || name === "list_item") {
-        wrapped = true;
-        break;
-      }
-    }
-
-    if (!wrapped || !lift(view.state, view.dispatch)) {
-      return;
-    }
-  }
-}
-
-// Escalating attempt at a block format: as-is, then out of any wrapper, then
-// flattened to a paragraph. A heading or code block cannot be the first child
-// of a list item, so wrapping one in a list only works once it is a paragraph.
-function runBlockFormat(
-  view: EditorView,
-  cmd: (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean,
-) {
-  if (cmd(view.state, view.dispatch)) return;
-
-  liftOutOfWrappers(view);
-  if (cmd(view.state, view.dispatch)) return;
-
-  const paragraph = view.state.schema.nodes.paragraph;
-
-  if (paragraph && view.state.selection.$from.parent.type !== paragraph) {
-    setBlockType(paragraph)(view.state, view.dispatch);
-  }
-
-  cmd(view.state, view.dispatch);
 }
 
 type RichEditorProps = {
@@ -327,30 +261,19 @@ const formattingKeymap = $prose((ctx) =>
     },
     Backspace: () => {
       const view = ctx.get(editorViewCtx);
-      const listItem = listItemSchema.type(ctx);
 
-      // Only claim the key at the start of a list item; everywhere else the
-      // default delete behaviour is what you want. Without this, the default
-      // joins the item into the one above, which drops the bullet but leaves
-      // the text stranded inside the previous item.
-      if (!isAtStartOfListItem(view.state, listItem)) {
-        return false;
-      }
-
-      return liftListItem(listItem)(view.state, view.dispatch);
+      return backspaceOutdentsListItem(listItemSchema.type(ctx))(
+        view.state,
+        view.dispatch,
+      );
     },
     Enter: () => {
       const view = ctx.get(editorViewCtx);
-      const listItem = listItemSchema.type(ctx);
 
-      // Enter on an empty bullet leaves the list, the usual "press Enter
-      // twice to stop making a list" behaviour. A bullet with text in it
-      // still splits normally, so fall through.
-      if (!isInEmptyListItem(view.state, listItem)) {
-        return false;
-      }
-
-      return liftListItem(listItem)(view.state, view.dispatch);
+      return enterLeavesEmptyListItem(listItemSchema.type(ctx))(
+        view.state,
+        view.dispatch,
+      );
     },
     "Mod-Shift-s": () => {
       callCommand(toggleStrikethroughCommand.key)(ctx);
