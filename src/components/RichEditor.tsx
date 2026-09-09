@@ -19,6 +19,7 @@ import {
   bulletListSchema,
   codeBlockSchema,
   commonmark,
+  linkSchema,
   orderedListSchema,
   toggleEmphasisCommand,
   toggleInlineCodeCommand,
@@ -31,8 +32,10 @@ import { gfm, toggleStrikethroughCommand } from "@milkdown/kit/preset/gfm";
 import type { Ctx } from "@milkdown/ctx";
 import { lift, setBlockType, toggleMark, wrapIn } from "@milkdown/kit/prose/commands";
 import { markRule } from "@milkdown/kit/prose";
+import { InputRule } from "@milkdown/kit/prose/inputrules";
 import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from "@milkdown/kit/prose/state";
 import { Decoration, DecorationSet, EditorView } from "@milkdown/kit/prose/view";
+import { Fragment, Slice } from "@milkdown/kit/prose/model";
 import type { Node as ProseNode, NodeType } from "@milkdown/kit/prose/model";
 import { history } from "@milkdown/kit/plugin/history";
 import { liftListItem, wrapInList } from "@milkdown/kit/prose/schema-list";
@@ -50,6 +53,10 @@ import {
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { SKIP, visit } from "unist-util-visit";
 import { normalizeMarkdownLineBreaks } from "../utils/markdown";
+import {
+  MARKDOWN_LINK_INPUT,
+  splitMarkdownLinks,
+} from "../utils/markdownLinks";
 import { TableOfContents } from "./TableOfContents";
 import { useTableOfContents, type TocEntry } from "../hooks/useTableOfContents";
 import "@milkdown/kit/prose/view/style/prosemirror.css";
@@ -424,6 +431,75 @@ const toggleHighlightCommand = $command("ToggleHighlight", (ctx) => () =>
   toggleMark(highlightSchema.type(ctx)),
 );
 
+// Typing `[label](https://example.com)` in Rich mode used to leave the whole
+// thing as plain text, because nothing turned it into a link. Serializing then
+// escaped it - `\[label]\(https\://example.com)` - since remark has to stop
+// literal text being read back as a link, and the colon has to be escaped too
+// or the bare URL would become an autolink. The document looked fine until you
+// switched to Source, where it was full of backslashes.
+//
+// Everything else about links already worked: files that come in with links
+// keep them, and Cmd+K sets a real link mark. This is only about the syntax
+// being typed out by hand.
+// The input rule only fires on a keystroke, so pasting a whole
+// `[label](url)` in one go still landed as plain text - which is how the
+// original report was produced, the URL having been copied from a browser.
+// Only plain single-line pastes are touched: anything carrying HTML already
+// has its own links, and a multi-line paste is a document rather than a link.
+const markdownLinkPastePlugin = $prose((ctx) => {
+  return new Plugin({
+    key: new PluginKey("smolMarkdownLinkPaste"),
+    props: {
+      handlePaste: (view, event) => {
+        const clipboard = event.clipboardData;
+        if (!clipboard) return false;
+        if (clipboard.types.includes("text/html")) return false;
+        if (view.state.selection.$from.parent.type.spec.code) return false;
+
+        const text = clipboard.getData("text/plain");
+        if (!text || text.includes("\n")) return false;
+
+        const segments = splitMarkdownLinks(text);
+        if (!segments) return false;
+
+        const linkType = linkSchema.type(ctx);
+        const pieces = segments.map((segment) =>
+          segment.href
+            ? view.state.schema.text(segment.text, [
+                linkType.create({ href: segment.href, title: segment.title ?? "" }),
+              ])
+            : view.state.schema.text(segment.text),
+        );
+
+        view.dispatch(
+          view.state.tr
+            .replaceSelection(new Slice(Fragment.from(pieces), 0, 0))
+            .scrollIntoView(),
+        );
+        return true;
+      },
+    },
+  });
+});
+
+const linkInputRule = $inputRule((ctx) =>
+  new InputRule(MARKDOWN_LINK_INPUT, (state, match, start, end) => {
+    const [, text, href, title] = match;
+    if (!text || !href) return null;
+
+    const linkType = linkSchema.type(ctx);
+    const link = linkType.create({ href, title: title ?? "" });
+
+    return (
+      state.tr
+        .replaceWith(start, end, state.schema.text(text, [link]))
+        // Without this the link mark stays active and whatever is typed next
+        // gets swallowed into the link.
+        .removeStoredMark(linkType)
+    );
+  }),
+);
+
 type FindMatch = { from: number; to: number };
 
 type FindState = {
@@ -646,6 +722,8 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
         .use(highlightRemarkPlugin)
         .use(highlightSchema)
         .use(highlightInputRule)
+        .use(linkInputRule)
+        .use(markdownLinkPastePlugin)
         .use(toggleHighlightCommand)
         .use(customEnterPlugin)
         .use(formattingKeymap)
