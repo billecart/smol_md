@@ -20,6 +20,7 @@ import {
   codeBlockSchema,
   commonmark,
   linkSchema,
+  paragraphSchema,
   orderedListSchema,
   toggleEmphasisCommand,
   toggleInlineCodeCommand,
@@ -60,8 +61,13 @@ import {
 import {
   backspaceOutdentsListItem,
   enterLeavesEmptyListItem,
+  findLinkAt,
   liftOutOfWrappers,
+  makeBodyText,
+  removeLinkAt,
   runBlockFormat,
+  updateLinkAt,
+  type LinkRange,
 } from "../utils/editorCommands";
 import { TableOfContents } from "./TableOfContents";
 import { useTableOfContents, type TocEntry } from "../hooks/useTableOfContents";
@@ -73,19 +79,25 @@ let _linkDialogCoords: LinkDialogCoords | null = null;
 let _linkDialogOnSubmit: ((href: string) => void) | null = null;
 let _linkDialogSync: (() => void) | null = null;
 
+let _linkDialogInitialHref = "";
+
 function openLinkDialog(
   view: EditorView,
   onSubmit: (href: string) => void,
+  initialHref = "",
+  atPos?: number,
 ) {
-  const coords = view.coordsAtPos(view.state.selection.from);
+  const coords = view.coordsAtPos(atPos ?? view.state.selection.from);
   _linkDialogCoords = { x: Math.round(coords.left), y: Math.round(coords.bottom) + 4 };
   _linkDialogOnSubmit = onSubmit;
+  _linkDialogInitialHref = initialHref;
   _linkDialogSync?.();
 }
 
 function closeLinkDialog() {
   _linkDialogCoords = null;
   _linkDialogOnSubmit = null;
+  _linkDialogInitialHref = "";
   _linkDialogSync?.();
 }
 
@@ -567,6 +579,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
   ) {
   const lastKnownMarkdown = useRef(value);
   const isSyncingFromApp = useRef(false);
+  const [contextMenuLink, setContextMenuLink] = useState<LinkRange | null>(null);
   const [contextMenuPosition, setContextMenuPosition] =
     useState<ContextMenuPosition | null>(null);
   const [linkDialogPos, setLinkDialogPos] = useState<LinkDialogCoords | null>(null);
@@ -788,6 +801,9 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
   useEffect(() => {
     if (!linkDialogPos) return;
     linkInputRef.current?.focus();
+    // Editing an existing link starts with the old href selected, so typing
+    // replaces it rather than appending to it.
+    linkInputRef.current?.select();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") closeLinkDialog();
     };
@@ -813,6 +829,67 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
 
     editor.action(callCommand(command.key, payload));
     setContextMenuPosition(null);
+  };
+
+  const runBodyText = () => {
+    const editor = get();
+    if (!editor) return;
+
+    editor.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      makeBodyText(view, paragraphSchema.type(ctx));
+    });
+    setContextMenuPosition(null);
+  };
+
+  const editLink = (link: LinkRange) => {
+    setContextMenuPosition(null);
+    const editor = get();
+    if (!editor) return;
+
+    editor.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      const linkType = linkSchema.type(ctx);
+
+      openLinkDialog(
+        view,
+        (href) => {
+          editor.action((inner) => {
+            const innerView = inner.get(editorViewCtx);
+            updateLinkAt(
+              innerView.state,
+              linkType,
+              link.from,
+              href,
+              innerView.dispatch,
+            );
+          });
+        },
+        link.href,
+        link.from,
+      );
+    });
+  };
+
+  const removeLink = (link: LinkRange) => {
+    setContextMenuPosition(null);
+    const editor = get();
+    if (!editor) return;
+
+    editor.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      removeLinkAt(
+        view.state,
+        linkSchema.type(ctx),
+        link.from,
+        view.dispatch,
+      );
+    });
+  };
+
+  const copyLink = (link: LinkRange) => {
+    setContextMenuPosition(null);
+    void navigator.clipboard?.writeText(link.href);
   };
 
   const promptForLink = () => {
@@ -923,6 +1000,38 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     const menuWidth = 184;
     const menuHeight = 420;
 
+    // Resolve the link from where the pointer actually is rather than from the
+    // selection: whether a right-click moves the caret is up to the browser,
+    // and this editor runs in Chromium in dev and WebKit when packaged.
+    const editor = get();
+    let link: LinkRange | null = null;
+
+    editor?.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      const at = view.posAtCoords({ left: event.clientX, top: event.clientY });
+      if (!at) return;
+
+      // Put the caret where the pointer is, unless the right-click landed
+      // inside an existing selection - then it is a menu for that selection
+      // and moving the caret would throw it away. Every block item in this
+      // menu acts on the caret, so without this they act on wherever the
+      // caret happened to be and the menu appears to do nothing.
+      const { from, to } = view.state.selection;
+      const insideSelection = at.pos >= from && at.pos <= to && from !== to;
+
+      if (!insideSelection) {
+        view.dispatch(
+          view.state.tr.setSelection(
+            TextSelection.create(view.state.doc, at.pos),
+          ),
+        );
+      }
+
+      link = findLinkAt(view.state, linkSchema.type(ctx), at.pos);
+    });
+
+    setContextMenuLink(link);
+
     setContextMenuPosition({
       x: Math.min(event.clientX, window.innerWidth - menuWidth - 8),
       y: Math.min(event.clientY, window.innerHeight - menuHeight - 8),
@@ -988,6 +1097,9 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
             Highlight
           </button>
           <span className="editor-context-divider" aria-hidden="true" />
+          <button type="button" role="menuitem" onClick={runBodyText}>
+            Body text
+          </button>
           <button
             type="button"
             role="menuitem"
@@ -1022,9 +1134,36 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
           <button type="button" role="menuitem" onClick={runCodeBlock}>
             Code block
           </button>
-          <button type="button" role="menuitem" onClick={promptForLink}>
-            Link
-          </button>
+          {contextMenuLink ? (
+            <>
+              <span className="editor-context-divider" aria-hidden="true" />
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => editLink(contextMenuLink)}
+              >
+                Edit link…
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => copyLink(contextMenuLink)}
+              >
+                Copy link
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => removeLink(contextMenuLink)}
+              >
+                Remove link
+              </button>
+            </>
+          ) : (
+            <button type="button" role="menuitem" onClick={promptForLink}>
+              Link
+            </button>
+          )}
         </div>
       ) : null}
       {linkDialogPos ? (
@@ -1034,7 +1173,9 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
         >
           <input
             ref={linkInputRef}
+            key={_linkDialogInitialHref}
             type="text"
+            defaultValue={_linkDialogInitialHref}
             placeholder="https://example.com"
             onKeyDown={(e) => {
               if (e.key === "Enter" && e.currentTarget.value.trim()) {

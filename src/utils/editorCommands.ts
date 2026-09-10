@@ -1,7 +1,7 @@
 import { lift, setBlockType } from "@milkdown/kit/prose/commands";
 import { liftListItem } from "@milkdown/kit/prose/schema-list";
 import type { EditorState, Transaction } from "@milkdown/kit/prose/state";
-import type { NodeType } from "@milkdown/kit/prose/model";
+import type { Mark, MarkType, NodeType } from "@milkdown/kit/prose/model";
 
 // These live here rather than in RichEditor.tsx so the test runner compiles
 // them - it only reaches src/utils. None of them touch the DOM, so they can
@@ -115,4 +115,101 @@ export function enterLeavesEmptyListItem(listItem: NodeType): BlockCommand {
 
     return liftListItem(listItem)(state, dispatch);
   };
+}
+
+// Body text - the way back out of a heading, quote, code block or bullet.
+// Every other block format had a menu item and this one did not, so a heading
+// was a one-way door. It lifts first, so "Body text" on a bullet removes the
+// bullet rather than succeeding trivially on the paragraph already inside it.
+// Takes a view rather than a (state, dispatch) pair, like liftOutOfWrappers
+// and runBlockFormat, because it is two steps and the second needs the state
+// the first produced. Written as a plain command it appeared to work only
+// because a real EditorView swaps its own state on dispatch; given a bare
+// dispatch it lifted and then applied the block type to the stale state.
+export function makeBodyText(view: EditorLike, paragraph: NodeType) {
+  liftOutOfWrappers(view);
+
+  return setBlockType(paragraph)(view.state, view.dispatch);
+}
+
+export type LinkRange = {
+  from: number;
+  to: number;
+  href: string;
+  title: string;
+};
+
+// The whole link under a position, not just the character there - editing or
+// removing a link has to act on all of it, and a link is several text nodes
+// whenever part of it carries another mark, such as a bold word inside it.
+export function findLinkAt(
+  state: EditorState,
+  linkType: MarkType,
+  pos: number,
+): LinkRange | null {
+  const $pos = state.doc.resolve(pos);
+  const parent = $pos.parent;
+
+  if (!parent.isTextblock) return null;
+
+  const start = $pos.start();
+  const runs: { from: number; to: number; mark: Mark }[] = [];
+
+  parent.forEach((child, offset) => {
+    const mark = linkType.isInSet(child.marks);
+    if (!mark) return;
+
+    const from = start + offset;
+    const previous = runs[runs.length - 1];
+
+    // Adjacent runs sharing the same link are one link, not several.
+    if (previous && previous.to === from && previous.mark.eq(mark)) {
+      previous.to = from + child.nodeSize;
+      return;
+    }
+
+    runs.push({ from, to: from + child.nodeSize, mark });
+  });
+
+  const hit = runs.find((run) => pos >= run.from && pos <= run.to);
+  if (!hit) return null;
+
+  return {
+    from: hit.from,
+    to: hit.to,
+    href: String(hit.mark.attrs.href ?? ""),
+    title: String(hit.mark.attrs.title ?? ""),
+  };
+}
+
+export function removeLinkAt(
+  state: EditorState,
+  linkType: MarkType,
+  pos: number,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
+  const link = findLinkAt(state, linkType, pos);
+  if (!link) return false;
+
+  dispatch?.(state.tr.removeMark(link.from, link.to, linkType));
+  return true;
+}
+
+// Replaces the href across the whole link, keeping its text.
+export function updateLinkAt(
+  state: EditorState,
+  linkType: MarkType,
+  pos: number,
+  href: string,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
+  const link = findLinkAt(state, linkType, pos);
+  if (!link) return false;
+
+  dispatch?.(
+    state.tr
+      .removeMark(link.from, link.to, linkType)
+      .addMark(link.from, link.to, linkType.create({ href, title: link.title })),
+  );
+  return true;
 }
