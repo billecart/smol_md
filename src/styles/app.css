@@ -732,8 +732,15 @@ input:focus-visible {
   margin-bottom: 0;
 }
 
+/* The step from one paragraph to the next, measured in line boxes rather than
+   in pixels, so it holds if the leading changes. Notion steps 1.29 line boxes
+   between paragraphs (24px line, 1px block margin, 3px padding top and
+   bottom); this was stepping 1.66, which is why Enter felt like it opened a
+   gap rather than starting a paragraph. 0.5em on a 1.75 line box lands on
+   Notion's ratio. The extra air inside our lines is why the gap between them
+   can be this small and still read as a break. */
 .rich-editor .ProseMirror p {
-  margin: 0 0 1.15em;
+  margin: 0 0 0.5em;
 }
 
 /* The space above each heading is one and a half times its own font size, so a
@@ -772,9 +779,14 @@ input:focus-visible {
   letter-spacing: -0.01em;
 }
 
+/* A list is a body block like a paragraph, so it steps the same 0.5em - which
+   is also what Notion does. Left at the old 1.2em it claimed nearly two and a
+   half times the air between two paragraphs, and the page read tight, tight,
+   loose. Blockquotes and code blocks keep their larger margins on purpose:
+   they are set apart rather than part of the run of text. */
 .rich-editor .ProseMirror ul,
 .rich-editor .ProseMirror ol {
-  margin: 1.2em 0;
+  margin: 0.5em 0;
   padding-left: 1.6em;
 }
 
