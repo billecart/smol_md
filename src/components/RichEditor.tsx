@@ -19,6 +19,7 @@ import {
   bulletListSchema,
   codeBlockSchema,
   commonmark,
+  headingSchema,
   linkSchema,
   paragraphSchema,
   orderedListSchema,
@@ -59,7 +60,9 @@ import {
   splitMarkdownLinks,
 } from "../utils/markdownLinks";
 import {
+  backspaceMergesHeadingAsBodyText,
   backspaceOutdentsListItem,
+  chainCommands,
   enterLeavesEmptyListItem,
   findLinkAt,
   liftOutOfWrappers,
@@ -274,10 +277,13 @@ const formattingKeymap = $prose((ctx) =>
     Backspace: () => {
       const view = ctx.get(editorViewCtx);
 
-      return backspaceOutdentsListItem(listItemSchema.type(ctx))(
-        view.state,
-        view.dispatch,
-      );
+      return chainCommands(
+        backspaceOutdentsListItem(listItemSchema.type(ctx)),
+        backspaceMergesHeadingAsBodyText(
+          headingSchema.type(ctx),
+          paragraphSchema.type(ctx),
+        ),
+      )(view.state, view.dispatch);
     },
     Enter: () => {
       const view = ctx.get(editorViewCtx);

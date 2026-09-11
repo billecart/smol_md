@@ -2,10 +2,12 @@ import assert from "node:assert/strict";
 import { liftListItem } from "@milkdown/kit/prose/schema-list";
 import { TextSelection } from "@milkdown/kit/prose/state";
 import {
-  bulletList, doc, listItem, nodes, orderedList, outlineDoc, p, runCommand, stateFrom,
+  bulletList, doc, heading, listItem, nodes, orderedList, outlineDoc, p, runCommand, stateFrom,
 } from "./editorFixtures";
 import {
+  backspaceMergesHeadingAsBodyText,
   backspaceOutdentsListItem,
+  chainCommands,
   enterLeavesEmptyListItem,
   isAtStartOfListItem,
   isInEmptyListItem,
@@ -148,4 +150,89 @@ test("neither handler claims a key outside a list", () => {
 
   assert.equal(runCommand(state, backspaceOutdentsListItem(nodes.list_item)).handled, false);
   assert.equal(runCommand(state, enterLeavesEmptyListItem(nodes.list_item)).handled, false);
+});
+
+// Backspace at the start of a paragraph after a heading used to pull the whole
+// paragraph into the heading, so a paragraph of body text suddenly rendered at
+// heading size. It now demotes the heading instead.
+
+test("backspace after a heading joins as body text, not as a heading", () => {
+  const state = stateFrom(doc(heading(1, "Head"), p("<|>Body text")));
+
+  const result = runCommand(
+    state,
+    backspaceMergesHeadingAsBodyText(nodes.heading, nodes.paragraph),
+  );
+
+  assert.equal(result.handled, true);
+  assert.equal(outlineDoc(result.doc), 'paragraph("HeadBody text")');
+});
+
+// A blank line under a heading should just go away. Demoting the heading here
+// would destroy it for pressing backspace on an empty line.
+test("backspace on an empty line under a heading is left to the default", () => {
+  const state = stateFrom(doc(heading(1, "Head"), p("<|>")));
+
+  const result = runCommand(
+    state,
+    backspaceMergesHeadingAsBodyText(nodes.heading, nodes.paragraph),
+  );
+
+  assert.equal(result.handled, false);
+  assert.equal(outlineDoc(result.doc), 'heading1("Head") | paragraph');
+});
+
+test("backspace mid-paragraph is left to the default", () => {
+  const state = stateFrom(doc(heading(1, "Head"), p("Body<|>text")));
+
+  assert.equal(
+    runCommand(state, backspaceMergesHeadingAsBodyText(nodes.heading, nodes.paragraph)).handled,
+    false,
+  );
+});
+
+test("backspace after an ordinary paragraph is left to the default", () => {
+  const state = stateFrom(doc(p("First"), p("<|>Second")));
+
+  assert.equal(
+    runCommand(state, backspaceMergesHeadingAsBodyText(nodes.heading, nodes.paragraph)).handled,
+    false,
+  );
+});
+
+test("backspace in the first block of the document is left to the default", () => {
+  const state = stateFrom(doc(p("<|>Only")));
+
+  assert.equal(
+    runCommand(state, backspaceMergesHeadingAsBodyText(nodes.heading, nodes.paragraph)).handled,
+    false,
+  );
+});
+
+// One keystroke has to cost one undo, so the demote and the join share a
+// transaction rather than being dispatched separately.
+test("demoting and joining happen in a single transaction", () => {
+  const state = stateFrom(doc(heading(2, "Head"), p("<|>Body")));
+  let dispatches = 0;
+
+  backspaceMergesHeadingAsBodyText(nodes.heading, nodes.paragraph)(state, () => {
+    dispatches += 1;
+  });
+
+  assert.equal(dispatches, 1);
+});
+
+test("chained commands stop at the first one that claims the key", () => {
+  const calls: string[] = [];
+  const claim = (name: string, handled: boolean) => () => {
+    calls.push(name);
+    return handled;
+  };
+
+  const result = chainCommands(claim("a", false), claim("b", true), claim("c", true))(
+    stateFrom(doc(p("<|>x"))),
+  );
+
+  assert.equal(result, true);
+  assert.deepEqual(calls, ["a", "b"]);
 });

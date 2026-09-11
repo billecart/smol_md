@@ -1,5 +1,6 @@
 import { lift, setBlockType } from "@milkdown/kit/prose/commands";
 import { liftListItem } from "@milkdown/kit/prose/schema-list";
+import { canJoin } from "@milkdown/kit/prose/transform";
 import type { EditorState, Transaction } from "@milkdown/kit/prose/state";
 import type { Mark, MarkType, NodeType } from "@milkdown/kit/prose/model";
 
@@ -212,4 +213,53 @@ export function updateLinkAt(
       .addMark(link.from, link.to, linkType.create({ href, title: link.title })),
   );
   return true;
+}
+
+// Backspace at the start of a paragraph that follows a heading used to pull
+// the whole paragraph up into the heading, so a paragraph of body text
+// suddenly rendered at 30px. It is the conventional behaviour and it is
+// alarming: the further down the paragraph the caret started, the more text
+// changed size.
+//
+// This demotes the heading to body text instead, then joins - the text keeps
+// the size it had, and what is lost is one heading rather than the appearance
+// of a whole paragraph. Both are a single undo away, so the question is only
+// which surprises less.
+//
+// An empty paragraph is deliberately left to the default: backspace on a
+// blank line under a heading should remove the blank line, not destroy the
+// heading. Both steps go in one transaction so one backspace costs one undo.
+export function backspaceMergesHeadingAsBodyText(
+  heading: NodeType,
+  paragraph: NodeType,
+): BlockCommand {
+  return (state, dispatch) => {
+    const { $from, empty } = state.selection;
+
+    if (!empty || $from.parentOffset !== 0) return false;
+    if ($from.depth !== 1) return false;
+    if ($from.parent.type !== paragraph) return false;
+    if ($from.parent.content.size === 0) return false;
+
+    const index = $from.index(-1);
+    if (index === 0) return false;
+
+    const previous = $from.node(-1).child(index - 1);
+    if (previous.type !== heading) return false;
+
+    const boundary = $from.before();
+    const tr = state.tr.setNodeMarkup(boundary - previous.nodeSize, paragraph);
+
+    if (!canJoin(tr.doc, boundary)) return false;
+
+    dispatch?.(tr.join(boundary).scrollIntoView());
+    return true;
+  };
+}
+
+// Runs commands in order until one claims the key, the way ProseMirror's own
+// keymap chains work.
+export function chainCommands(...commands: BlockCommand[]): BlockCommand {
+  return (state, dispatch) =>
+    commands.some((command) => command(state, dispatch));
 }
