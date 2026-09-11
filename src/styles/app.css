@@ -756,17 +756,24 @@ input:focus-visible {
   color: var(--text-normal);
 }
 
+/* 1.32, not Notion's 1.2. The caret is drawn at the font's own line box, not
+   at the CSS line-height, and this editor's monospace has a natural box of
+   about 1.31 em where a proportional sans is nearer 1.21. At 1.2 the caret
+   stood 39px tall in a 36px line - taller than the heading it sat in - so it
+   poked out above and below, and the change in caret size on backspace
+   between a heading and body text was exaggerated. Copying Notion's number
+   did not survive the change of typeface. */
 .rich-editor .ProseMirror h1 {
   margin: 2.8125rem 0 0.75rem;
   font-size: 1.875rem;
-  line-height: 1.2;
+  line-height: 1.32;
   letter-spacing: -0.02em;
 }
 
 .rich-editor .ProseMirror h2 {
   margin: 2.25rem 0 0.6rem;
   font-size: 1.5rem;
-  line-height: 1.2;
+  line-height: 1.32;
   letter-spacing: -0.015em;
 }
 
@@ -775,7 +782,7 @@ input:focus-visible {
 .rich-editor .ProseMirror h3 {
   margin: 1.875rem 0 0.5rem;
   font-size: 1.25rem;
-  line-height: 1.25;
+  line-height: 1.32;
   letter-spacing: -0.01em;
 }
 
