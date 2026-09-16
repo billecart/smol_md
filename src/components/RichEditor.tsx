@@ -50,11 +50,13 @@ import {
   $prose,
   $remark,
   callCommand,
+  markdownToSlice,
   replaceAll,
 } from "@milkdown/kit/utils";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { SKIP, visit } from "unist-util-visit";
 import { normalizeMarkdownLineBreaks } from "../utils/markdown";
+import { openExternalUrl } from "../services/fileService";
 import {
   MARKDOWN_LINK_INPUT,
   splitMarkdownLinks,
@@ -385,8 +387,9 @@ const toggleHighlightCommand = $command("ToggleHighlight", (ctx) => () =>
 // The input rule only fires on a keystroke, so pasting a whole
 // `[label](url)` in one go still landed as plain text - which is how the
 // original report was produced, the URL having been copied from a browser.
-// Only plain single-line pastes are touched: anything carrying HTML already
-// has its own links, and a multi-line paste is a document rather than a link.
+// Pasted text containing markdown links is converted into real links.
+// Single-line pastes use fast text fragments; multi-line pastes parse through
+// markdownToSlice so paragraph/block structure is preserved.
 const markdownLinkPastePlugin = $prose((ctx) => {
   return new Plugin({
     key: new PluginKey("smolMarkdownLinkPaste"),
@@ -398,25 +401,63 @@ const markdownLinkPastePlugin = $prose((ctx) => {
         if (view.state.selection.$from.parent.type.spec.code) return false;
 
         const text = clipboard.getData("text/plain");
-        if (!text || text.includes("\n")) return false;
+        if (!text) return false;
 
         const segments = splitMarkdownLinks(text);
         if (!segments) return false;
 
-        const linkType = linkSchema.type(ctx);
-        const pieces = segments.map((segment) =>
-          segment.href
-            ? view.state.schema.text(segment.text, [
-                linkType.create({ href: segment.href, title: segment.title ?? "" }),
-              ])
-            : view.state.schema.text(segment.text),
-        );
+        if (!text.includes("\n")) {
+          const linkType = linkSchema.type(ctx);
+          const pieces = segments.map((segment) =>
+            segment.href
+              ? view.state.schema.text(segment.text, [
+                  linkType.create({ href: segment.href, title: segment.title ?? "" }),
+                ])
+              : view.state.schema.text(segment.text),
+          );
 
-        view.dispatch(
-          view.state.tr
-            .replaceSelection(new Slice(Fragment.from(pieces), 0, 0))
-            .scrollIntoView(),
-        );
+          view.dispatch(
+            view.state.tr
+              .replaceSelection(new Slice(Fragment.from(pieces), 0, 0))
+              .scrollIntoView(),
+          );
+          return true;
+        }
+
+        try {
+          const slice = markdownToSlice(text)(ctx);
+          view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
+          return true;
+        } catch {
+          return false;
+        }
+      },
+    },
+  });
+});
+
+// Primary clicks on links open the destination in the system browser.
+// Option/Alt-click is reserved for caret placement inside the link text.
+const linkClickPlugin = $prose((ctx) => {
+  return new Plugin({
+    key: new PluginKey("smolLinkClick"),
+    props: {
+      handleClick: (view, pos, event) => {
+        if (event.button !== 0) return false;
+        if (event.altKey) return false;
+
+        const { from, to } = view.state.selection;
+        if (from !== to) return false;
+
+        const target = event.target as HTMLElement | null;
+        const anchor = target?.closest?.("a");
+        const link = findLinkAt(view.state, linkSchema.type(ctx), pos);
+        const href = link?.href || anchor?.getAttribute("href");
+
+        if (!href) return false;
+
+        event.preventDefault();
+        void openExternalUrl(href);
         return true;
       },
     },
@@ -666,6 +707,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
         .use(highlightInputRule)
         .use(linkInputRule)
         .use(markdownLinkPastePlugin)
+        .use(linkClickPlugin)
         .use(toggleHighlightCommand)
         .use(customEnterPlugin)
         .use(formattingKeymap)
@@ -848,6 +890,11 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     setContextMenuPosition(null);
   };
 
+  const openLink = (link: LinkRange) => {
+    setContextMenuPosition(null);
+    void openExternalUrl(link.href);
+  };
+
   const editLink = (link: LinkRange) => {
     setContextMenuPosition(null);
     const editor = get();
@@ -1004,7 +1051,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const menuWidth = 184;
-    const menuHeight = 420;
+    const menuHeight = 456;
 
     // Resolve the link from where the pointer actually is rather than from the
     // selection: whether a right-click moves the caret is up to the browser,
@@ -1143,6 +1190,13 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
           {contextMenuLink ? (
             <>
               <span className="editor-context-divider" aria-hidden="true" />
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => openLink(contextMenuLink)}
+              >
+                Open link
+              </button>
               <button
                 type="button"
                 role="menuitem"

@@ -10,5 +10,6 @@ commands.allow = [
   "force_quit",
   "print_document",
   "set_recent_documents",
-  "export_pdf"
+  "export_pdf",
+  "open_url"
 ]

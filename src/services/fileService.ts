@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { RecentDocument } from "../utils/recentDocuments";
+import { normalizeExternalUrl } from "../utils/markdownLinks";
 
 export type OpenedMarkdownFile = {
   filePath: string | null;
@@ -263,6 +264,24 @@ export async function setRecentDocuments(
       fileName: document.fileName,
     })),
   });
+}
+
+export async function openExternalUrl(url: string): Promise<void> {
+  const target = normalizeExternalUrl(url);
+  if (!target) {
+    return;
+  }
+
+  if (isRunningInTauri()) {
+    try {
+      await invoke("open_url", { url: target });
+      return;
+    } catch (error) {
+      console.error("Failed to open URL in Tauri:", error);
+    }
+  }
+
+  window.open(target, "_blank", "noopener,noreferrer");
 }
 
 function ensureMarkdownExtension(path: string) {

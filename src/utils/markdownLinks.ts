@@ -50,3 +50,14 @@ export function splitMarkdownLinks(input: string): MarkdownSegment[] | null {
 
   return segments;
 }
+
+// Normalizes an external URL or email link before dispatching to the OS or browser.
+// Bare hostnames are prefixed with https://; http://, https://, and mailto: are preserved.
+export function normalizeExternalUrl(url: string): string | null {
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+
+  return /^https?:\/\//i.test(trimmed) || /^mailto:/i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+}

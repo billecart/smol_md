@@ -851,6 +851,11 @@ input:focus-visible {
   text-decoration-thickness: 1px;
   text-decoration-color: var(--link-decoration-color);
   text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.rich-editor .ProseMirror a:hover {
+  text-decoration-color: var(--link-color);
 }
 
 .rich-editor .ProseMirror blockquote {

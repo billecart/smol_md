@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   MARKDOWN_LINK_INPUT,
+  normalizeExternalUrl,
   splitMarkdownLinks,
 } from "../src/utils/markdownLinks";
 import { test } from "./testHarness";
@@ -72,4 +73,14 @@ test("splitting a bare link produces exactly one segment", () => {
   assert.deepEqual(splitMarkdownLinks("[Test](http://localhost:8899/a%20b.html)"), [
     { text: "Test", href: "http://localhost:8899/a%20b.html", title: "" },
   ]);
+});
+
+test("normalizeExternalUrl handles schemes and bare hostnames", () => {
+  assert.equal(normalizeExternalUrl("https://example.com"), "https://example.com");
+  assert.equal(normalizeExternalUrl("http://example.com"), "http://example.com");
+  assert.equal(normalizeExternalUrl("mailto:contact@example.com"), "mailto:contact@example.com");
+  assert.equal(normalizeExternalUrl("example.com/test"), "https://example.com/test");
+  assert.equal(normalizeExternalUrl("  proz.com  "), "https://proz.com");
+  assert.equal(normalizeExternalUrl(""), null);
+  assert.equal(normalizeExternalUrl("   "), null);
 });

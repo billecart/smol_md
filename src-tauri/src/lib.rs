@@ -108,6 +108,44 @@ fn export_pdf(window: tauri::WebviewWindow, path: String) -> Result<(), String> 
     }
 }
 
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    let trimmed = url.trim();
+    if !trimmed.starts_with("https://")
+        && !trimmed.starts_with("http://")
+        && !trimmed.starts_with("mailto:")
+    {
+        return Err(format!("Unsupported URL scheme: {url}"));
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(trimmed)
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", trimmed])
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(trimmed)
+            .spawn()
+            .map_err(|error| error.to_string())?;
+        Ok(())
+    }
+}
+
 // AppKit reports the outcome of an asynchronous print operation by messaging
 // a delegate, so there has to be an Objective-C object to receive it. This is
 // the whole of it: one method, two flags.
@@ -724,7 +762,8 @@ pub fn run() {
             force_quit,
             print_document,
             export_pdf,
-            set_recent_documents
+            set_recent_documents,
+            open_url
         ]);
 
     #[cfg(target_os = "macos")]

@@ -170,3 +170,23 @@ test("updating a link rewrites all of it when it is split by another mark", () =
   assert.equal(found?.href, "https://new.example");
   assert.equal(result.state.doc.textBetween(found!.from, found!.to), "one two");
 });
+
+test("finding link at any position across its range yields the destination", () => {
+  const state = stateFrom(doc(p("pre ", link("target", "https://destination.com"), " post")));
+  // In `pre target post`:
+  // pos 0: start of doc
+  // pos 1: start of paragraph
+  // pos 1..5: "pre "
+  // pos 5: start of "target"
+  // pos 8: middle of "target"
+  // pos 11: end of "target"
+  const atStart = findLinkAt(state, marks.link, 5);
+  const inMiddle = findLinkAt(state, marks.link, 8);
+  const atEnd = findLinkAt(state, marks.link, 11);
+
+  assert.equal(atStart?.href, "https://destination.com");
+  assert.equal(inMiddle?.href, "https://destination.com");
+  assert.equal(atEnd?.href, "https://destination.com");
+  assert.equal(findLinkAt(state, marks.link, 2), null);
+  assert.equal(findLinkAt(state, marks.link, 13), null);
+});

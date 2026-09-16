@@ -49,5 +49,6 @@ test("the plugin scan finds the editor's plugins", () => {
 
   assert.equal(defined.includes("linkInputRule"), true);
   assert.equal(defined.includes("markdownLinkPastePlugin"), true);
+  assert.equal(defined.includes("linkClickPlugin"), true);
   assert.equal(defined.length >= 8, true);
 });
