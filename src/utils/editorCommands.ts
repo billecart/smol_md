@@ -1,5 +1,5 @@
 import { lift, setBlockType } from "@milkdown/kit/prose/commands";
-import { liftListItem } from "@milkdown/kit/prose/schema-list";
+import { liftListItem, sinkListItem } from "@milkdown/kit/prose/schema-list";
 import { canJoin } from "@milkdown/kit/prose/transform";
 import type { EditorState, Transaction } from "@milkdown/kit/prose/state";
 import type { Mark, MarkType, NodeType } from "@milkdown/kit/prose/model";
@@ -253,6 +253,66 @@ export function backspaceMergesHeadingAsBodyText(
     if (!canJoin(tr.doc, boundary)) return false;
 
     dispatch?.(tr.join(boundary).scrollIntoView());
+    return true;
+  };
+}
+
+// Depth of the list item holding the caret, or null outside a list.
+function listItemDepth(state: EditorState, listItem: NodeType) {
+  const { $from } = state.selection;
+
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    if ($from.node(depth).type === listItem) return depth;
+  }
+
+  return null;
+}
+
+// Tab on a bullet. The first bullet of a list has nothing above it to nest
+// under, so sinking fails - but a list right after another list of the same
+// kind is usually one list split in two (Markdown starts a new list when the
+// bullet character changes, `*` then `-`), so the two are joined and the item
+// nested into the one above. Inside a list the key is always claimed: letting
+// it through moves focus out of the editor to the next button.
+export function indentListItem(listItem: NodeType): BlockCommand {
+  return (state, dispatch) => {
+    const depth = listItemDepth(state, listItem);
+    if (depth === null) return false;
+
+    if (sinkListItem(listItem)(state, dispatch)) return true;
+
+    const { $from } = state.selection;
+    const listDepth = depth - 1;
+    const listStart = $from.before(listDepth);
+    const previous = state.doc.resolve(listStart).nodeBefore;
+
+    if (
+      $from.index(listDepth) !== 0 ||
+      !previous ||
+      previous.type !== $from.node(listDepth).type ||
+      !canJoin(state.doc, listStart)
+    ) {
+      return true;
+    }
+
+    const tr = state.tr.join(listStart);
+    const joined = state.apply(tr);
+
+    sinkListItem(listItem)(joined, (sinkTr) => {
+      sinkTr.steps.forEach((step) => tr.step(step));
+      tr.setSelection(sinkTr.selection.getBookmark().resolve(tr.doc));
+    });
+    dispatch?.(tr.scrollIntoView());
+    return true;
+  };
+}
+
+// Shift-Tab on a bullet. Claimed inside a list for the same focus reason.
+export function outdentListItem(listItem: NodeType): BlockCommand {
+  return (state, dispatch) => {
+    if (listItemDepth(state, listItem) === null) return false;
+
+    liftListItem(listItem)(state, dispatch);
     return true;
   };
 }

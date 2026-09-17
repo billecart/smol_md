@@ -67,8 +67,10 @@ import {
   chainCommands,
   enterLeavesEmptyListItem,
   findLinkAt,
+  indentListItem,
   liftOutOfWrappers,
   makeBodyText,
+  outdentListItem,
   removeLinkAt,
   runBlockFormat,
   updateLinkAt,
@@ -286,6 +288,16 @@ const formattingKeymap = $prose((ctx) =>
           paragraphSchema.type(ctx),
         ),
       )(view.state, view.dispatch);
+    },
+    Tab: () => {
+      const view = ctx.get(editorViewCtx);
+
+      return indentListItem(listItemSchema.type(ctx))(view.state, view.dispatch);
+    },
+    "Shift-Tab": () => {
+      const view = ctx.get(editorViewCtx);
+
+      return outdentListItem(listItemSchema.type(ctx))(view.state, view.dispatch);
     },
     Enter: () => {
       const view = ctx.get(editorViewCtx);

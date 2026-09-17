@@ -9,6 +9,8 @@ import {
   backspaceOutdentsListItem,
   chainCommands,
   enterLeavesEmptyListItem,
+  indentListItem,
+  outdentListItem,
   isAtStartOfListItem,
   isInEmptyListItem,
 } from "../src/utils/editorCommands";
@@ -235,4 +237,57 @@ test("chained commands stop at the first one that claims the key", () => {
 
   assert.equal(result, true);
   assert.deepEqual(calls, ["a", "b"]);
+});
+
+test("tab nests a bullet under the one above", () => {
+  const state = stateFrom(doc(bulletList(listItem(p("one")), listItem(p("two<|>")))));
+
+  const result = runCommand(state, indentListItem(nodes.list_item));
+  assert.equal(result.handled, true);
+  assert.equal(
+    outlineDoc(result.doc),
+    'bullet_list(list_item(paragraph("one"), bullet_list(list_item(paragraph("two")))))',
+  );
+});
+
+// User-reported bug: a `*` list followed by a `-` list is two lists, and Tab
+// on the first `-` bullet did nothing and moved focus out of the editor.
+test("tab on the first bullet of a list right after another list joins and nests it", () => {
+  const state = stateFrom(doc(
+    bulletList(listItem(p("one"))),
+    bulletList(listItem(p("two<|>")), listItem(p("three"))),
+  ));
+
+  const result = runCommand(state, indentListItem(nodes.list_item));
+  assert.equal(result.handled, true);
+  assert.equal(
+    outlineDoc(result.doc),
+    'bullet_list(list_item(paragraph("one"), bullet_list(list_item(paragraph("two")))), list_item(paragraph("three")))',
+  );
+  assert.equal(result.state.selection.$from.parent.textContent, "two");
+});
+
+test("tab on a first bullet with nothing to nest under is claimed and changes nothing", () => {
+  const state = stateFrom(doc(p("intro"), bulletList(listItem(p("one<|>")))));
+
+  const result = runCommand(state, indentListItem(nodes.list_item));
+  assert.equal(result.handled, true);
+  assert.equal(outlineDoc(result.doc), outlineDoc(state.doc));
+});
+
+test("tab outside a list is left alone", () => {
+  const state = stateFrom(doc(p("plain<|>")));
+
+  assert.equal(runCommand(state, indentListItem(nodes.list_item)).handled, false);
+});
+
+test("shift-tab lifts a nested bullet back out", () => {
+  const state = stateFrom(doc(bulletList(listItem(p("one"), bulletList(listItem(p("two<|>")))))));
+
+  const result = runCommand(state, outdentListItem(nodes.list_item));
+  assert.equal(result.handled, true);
+  assert.equal(
+    outlineDoc(result.doc),
+    'bullet_list(list_item(paragraph("one")), list_item(paragraph("two")))',
+  );
 });
