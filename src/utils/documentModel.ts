@@ -98,6 +98,42 @@ export function createLoadedDocument(file: OpenedMarkdownFile) {
   });
 }
 
+// Opens several files in one pass so each decision sees the result of the
+// previous one. Calling a single-file loader in a loop reuses the same stale
+// `documents`, so every file tried to replace the one starter draft and only
+// the last survived.
+export function addLoadedDocuments(
+  documents: OpenDocument[],
+  activeDocument: OpenDocument,
+  files: OpenedMarkdownFile[],
+) {
+  let nextDocuments = documents;
+  let nextActiveDocument = activeDocument;
+
+  for (const file of files) {
+    const existingDocument = findExistingDocumentByPath(
+      nextDocuments,
+      file.filePath,
+    );
+
+    if (existingDocument) {
+      nextActiveDocument = existingDocument;
+      continue;
+    }
+
+    const loadedDocument = createLoadedDocument(file);
+
+    nextDocuments = shouldReplaceInitialDraft(nextDocuments, nextActiveDocument)
+      ? nextDocuments.map((document) =>
+          document.id === nextActiveDocument.id ? loadedDocument : document,
+        )
+      : [...nextDocuments, loadedDocument];
+    nextActiveDocument = loadedDocument;
+  }
+
+  return { documents: nextDocuments, activeDocumentId: nextActiveDocument.id };
+}
+
 export function requiresDiscardConfirmation(
   document: Pick<OpenDocument, "isDirty">,
 ) {

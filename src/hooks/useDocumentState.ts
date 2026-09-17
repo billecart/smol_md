@@ -1,12 +1,10 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { OpenedMarkdownFile } from "../services/fileService";
 import {
+  addLoadedDocuments,
   createDocument,
-  createLoadedDocument,
-  findExistingDocumentByPath,
   markDocumentSaved,
   setDocumentMarkdown,
-  shouldReplaceInitialDraft,
   type OpenDocument,
 } from "../utils/documentModel";
 
@@ -72,61 +70,60 @@ export function useDocumentState() {
     setActiveDocumentId(document.id);
   }, []);
 
-  // NOTE: loadDocument and closeDocument below are intentionally left as
-  // plain closures (recreated on every render), not useCallback-wrapped.
-  //
-  // Both need to read the *current* `documents` (and `activeDocument`) to
-  // decide what to do *before* they know what to pass to the separate
-  // `setActiveDocumentId` call:
-  //   - loadDocument has to check whether a document with this file path is
-  //     already open, and whether the lone empty starter draft should be
-  //     replaced, before it knows which document id becomes active.
-  //   - closeDocument has to find the closing document's index and compute
-  //     the fallback "next active" document from the remaining list before
-  //     it knows which document id becomes active.
-  //
-  // That decision can't be computed purely inside `setDocuments`'s functional
-  // updater and then handed to `setActiveDocumentId`: React does not
-  // guarantee synchronous, single-invocation execution of a functional
-  // updater (and React's Strict Mode dev checks deliberately call it twice
-  // to catch exactly this kind of impurity), so leaking a value out of one
-  // updater to feed a second, independent `useState` setter is not safe.
-  // Stabilizing these for real would require either a ref mirroring the
-  // latest `documents` array or merging `documents`/`activeDocumentId` into
-  // a single `useReducer` - both bigger structural changes than the
-  // functional-updater pattern asked for here, and both carry more risk of
-  // a subtle behavioral regression than leaving these two exactly as they
-  // behaved before this refactor (recreated every render, always reading
-  // fresh `documents`/`activeDocument` from the closure).
-  const loadDocument = (file: OpenedMarkdownFile) => {
-    const existingDocument = findExistingDocumentByPath(
-      documents,
-      file.filePath,
-    );
+  // Mirrors the latest state for loadDocuments, which has to stay stable:
+  // the dock-drop listener in App re-subscribes whenever it changes, and a
+  // batch whose read finished during that gap was silently dropped. macOS
+  // hands a multi-file drop over in more than one batch, so the first batch
+  // opening (and changing `documents`) lost the second.
+  const latestRef = useRef({ documents, activeDocument });
+  latestRef.current = { documents, activeDocument };
 
-    if (existingDocument) {
-      setActiveDocumentId(existingDocument.id);
+  // Two batches can land before React re-renders, so the ref is advanced by
+  // hand, and the list is updated with a functional updater so an edit that
+  // hasn't rendered yet is kept. Ids are fixed before the updater runs, which
+  // keeps the updater pure.
+  const loadDocuments = useCallback((files: OpenedMarkdownFile[]) => {
+    if (files.length === 0) {
       return;
     }
 
-    const shouldReplaceActive = shouldReplaceInitialDraft(
-      documents,
-      activeDocument,
+    const latest = latestRef.current;
+    const next = addLoadedDocuments(
+      latest.documents,
+      latest.activeDocument,
+      files,
     );
-    const loadedDocument = createLoadedDocument(file);
+    const latestIds = new Set(latest.documents.map((document) => document.id));
+    const nextIds = new Set(next.documents.map((document) => document.id));
+    const addedDocuments = next.documents.filter(
+      (document) => !latestIds.has(document.id),
+    );
+    const removedIds = new Set(
+      [...latestIds].filter((documentId) => !nextIds.has(documentId)),
+    );
 
-    setDocuments((currentDocuments) => {
-      if (shouldReplaceActive) {
-        return currentDocuments.map((document) =>
-          document.id === activeDocument.id ? loadedDocument : document,
-        );
-      }
+    latestRef.current = {
+      documents: next.documents,
+      activeDocument: next.documents.find(
+        (document) => document.id === next.activeDocumentId,
+      )!,
+    };
 
-      return [...currentDocuments, loadedDocument];
-    });
-    setActiveDocumentId(loadedDocument.id);
-  };
+    setDocuments((currentDocuments) => [
+      ...currentDocuments.filter((document) => !removedIds.has(document.id)),
+      ...addedDocuments,
+    ]);
+    setActiveDocumentId(next.activeDocumentId);
+  }, []);
 
+  const loadDocument = useCallback(
+    (file: OpenedMarkdownFile) => loadDocuments([file]),
+    [loadDocuments],
+  );
+
+  // NOTE: closeDocument is intentionally left as a plain closure (recreated
+  // on every render): it reads the current `documents` to find the fallback
+  // "next active" document before it knows which id becomes active.
   const closeDocument = (documentId: string) => {
     if (documents.length === 1) {
       const replacementDocument = createDocument();
@@ -160,6 +157,7 @@ export function useDocumentState() {
       setActiveDocumentId,
       setMarkdown,
       loadDocument,
+      loadDocuments,
       markSaved,
       createNewDocument,
       closeDocument,
@@ -169,6 +167,8 @@ export function useDocumentState() {
     activeDocument,
     documents,
     setMarkdown,
+    loadDocument,
+    loadDocuments,
     markSaved,
     createNewDocument,
     resetWorkspace,

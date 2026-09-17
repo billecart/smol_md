@@ -60,9 +60,18 @@ export async function openStartupMarkdownFile(): Promise<
   return openMarkdownFileAtPath(filePath);
 }
 
-export async function takeOpenedMarkdownFiles(): Promise<OpenedMarkdownFile[]> {
+export type OpenedMarkdownFilesResult = {
+  files: OpenedMarkdownFile[];
+  failures: { filePath: string; error: unknown }[];
+};
+
+// Drains the paths macOS handed to the app (dock drop, Finder "Open With").
+// The Rust side is the only queue: the `opened-markdown-files` event is just a
+// nudge to drain it, so a batch is read exactly once no matter whether the
+// listener or the startup drain gets there first.
+export async function takeOpenedMarkdownFiles(): Promise<OpenedMarkdownFilesResult> {
   if (!isRunningInTauri()) {
-    return [];
+    return { files: [], failures: [] };
   }
 
   const filePaths = await invoke<string[]>("take_opened_markdown_file_paths");
@@ -71,17 +80,15 @@ export async function takeOpenedMarkdownFiles(): Promise<OpenedMarkdownFile[]> {
 }
 
 export async function listenForOpenedMarkdownFiles(
-  onOpened: (files: OpenedMarkdownFile[]) => void,
+  onOpened: (result: OpenedMarkdownFilesResult) => void,
   onError: (error: unknown) => void,
 ) {
   if (!isRunningInTauri()) {
     return () => undefined;
   }
 
-  return listen<string[]>("opened-markdown-files", (event) => {
-    void openMarkdownFilesAtPaths(event.payload)
-      .then(onOpened)
-      .catch(onError);
+  return listen("opened-markdown-files", () => {
+    void takeOpenedMarkdownFiles().then(onOpened).catch(onError);
   });
 }
 
@@ -99,15 +106,27 @@ export async function openMarkdownFileAtPath(
   };
 }
 
-async function openMarkdownFilesAtPaths(filePaths: string[]) {
+// Every file is read independently: one that can't be read (an online-only
+// cloud file that times out, say) must not stop the others from opening.
+async function openMarkdownFilesAtPaths(
+  filePaths: string[],
+): Promise<OpenedMarkdownFilesResult> {
   const uniqueFilePaths = [...new Set(filePaths)];
+  const results = await Promise.allSettled(
+    uniqueFilePaths.map(openMarkdownFileAtPath),
+  );
   const files: OpenedMarkdownFile[] = [];
+  const failures: OpenedMarkdownFilesResult["failures"] = [];
 
-  for (const filePath of uniqueFilePaths) {
-    files.push(await openMarkdownFileAtPath(filePath));
-  }
+  results.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      files.push(result.value);
+    } else {
+      failures.push({ filePath: uniqueFilePaths[index]!, error: result.reason });
+    }
+  });
 
-  return files;
+  return { files, failures };
 }
 
 export async function saveMarkdownFile(
@@ -292,6 +311,6 @@ function ensureMarkdownExtension(path: string) {
   return `${path}.md`;
 }
 
-function getFileName(path: string) {
+export function getFileName(path: string) {
   return path.split(/[\\/]/).pop() || "Untitled.md";
 }

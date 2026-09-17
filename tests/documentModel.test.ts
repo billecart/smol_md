@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "./testHarness";
 import {
+  addLoadedDocuments,
   createDocument,
   createLoadedDocument,
   markDocumentSaved,
@@ -170,4 +171,43 @@ test("saving empty content over non-empty existing content is treated as unsafe"
   assert.equal(isUnsafeEmptyOverwrite("", "# Existing\n", "C:\\Notes\\a.md"), true);
   assert.equal(isUnsafeEmptyOverwrite("", "", "C:\\Notes\\a.md"), false);
   assert.equal(isUnsafeEmptyOverwrite("", "# Existing\n", null), false);
+});
+
+test("several files opened into a fresh window all get a tab", () => {
+  const draft = createDocument();
+  const files = ["a", "b", "c"].map((name) => ({
+    filePath: `/notes/${name}.md`,
+    fileName: `${name}.md`,
+    markdown: `# ${name}\n`,
+  }));
+
+  const next = addLoadedDocuments([draft], draft, files);
+
+  assert.deepEqual(
+    next.documents.map((document) => document.fileName),
+    ["a.md", "b.md", "c.md"],
+  );
+  assert.equal(next.activeDocumentId, next.documents[2]!.id);
+});
+
+test("several files opened next to an open file are appended, duplicates skipped", () => {
+  const open = createLoadedDocument({
+    filePath: "/notes/a.md",
+    fileName: "a.md",
+    markdown: "# a\n",
+  });
+  const files = [
+    { filePath: "/notes/b.md", fileName: "b.md", markdown: "# b\n" },
+    { filePath: "/notes/a.md", fileName: "a.md", markdown: "# a\n" },
+    { filePath: "/notes/c.md", fileName: "c.md", markdown: "# c\n" },
+  ];
+
+  const next = addLoadedDocuments([open], open, files);
+
+  assert.deepEqual(
+    next.documents.map((document) => document.fileName),
+    ["a.md", "b.md", "c.md"],
+  );
+  assert.equal(next.documents[0], open);
+  assert.equal(next.activeDocumentId, next.documents[2]!.id);
 });

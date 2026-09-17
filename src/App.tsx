@@ -26,6 +26,7 @@ import {
   openMarkdownFileAtPath,
   openStartupMarkdownFile,
   exportPdf,
+  getFileName,
   printDocument,
   setRecentDocuments as setNativeRecentDocuments,
   setUnsavedChanges,
@@ -33,6 +34,7 @@ import {
   saveMarkdownFile,
   saveMarkdownFileAs,
   type OpenedMarkdownFile,
+  type OpenedMarkdownFilesResult,
 } from "./services/fileService";
 import { isMacOs } from "./utils/platform";
 import {
@@ -62,6 +64,7 @@ function App() {
     setActiveDocumentId,
     setMarkdown,
     loadDocument,
+    loadDocuments,
     markSaved,
     createNewDocument,
     closeDocument,
@@ -245,11 +248,19 @@ function App() {
 
     let isSubscribed = true;
 
-    const openFiles = (files: OpenedMarkdownFile[]) => {
-      for (const file of files) {
-        loadDocument(file);
-        rememberRecentDocument(file);
-        setMessage(`Opened ${file.fileName}`);
+    const openFiles = ({ files, failures }: OpenedMarkdownFilesResult) => {
+      loadDocuments(files);
+      files.forEach(rememberRecentDocument);
+
+      if (failures.length > 0) {
+        const names = failures.map(({ filePath }) => getFileName(filePath));
+        reportProblem(
+          `Could not open ${names.join(", ")}: ${getErrorMessage(failures[0]!.error)}`,
+        );
+      } else if (files.length === 1) {
+        setMessage(`Opened ${files[0]!.fileName}`);
+      } else if (files.length > 1) {
+        setMessage(`Opened ${files.length} files`);
       }
     };
 
@@ -265,9 +276,9 @@ function App() {
     void (async () => {
       try {
         const listener = await listenForOpenedMarkdownFiles(
-          (files) => {
+          (result) => {
             if (isSubscribed) {
-              openFiles(files);
+              openFiles(result);
             }
           },
           (error) => {
@@ -284,10 +295,10 @@ function App() {
 
         unlisten = listener;
 
-        const files = await takeOpenedMarkdownFiles();
+        const result = await takeOpenedMarkdownFiles();
 
         if (isSubscribed) {
-          openFiles(files);
+          openFiles(result);
         }
       } catch (error) {
         if (isSubscribed) {
@@ -300,7 +311,7 @@ function App() {
       isSubscribed = false;
       unlisten?.();
     };
-  }, [isMacDesktopApp, loadDocument, rememberRecentDocument]);
+  }, [isMacDesktopApp, loadDocuments, rememberRecentDocument]);
 
   const confirmDiscard = async (
     targetDocument: Pick<OpenDocument, "fileName" | "isDirty"> = documentState,
@@ -328,10 +339,6 @@ function App() {
     setMessage("New empty document");
   }, [createNewDocument]);
 
-  // NOTE: loadDocument is recreated every render (see useDocumentState.ts),
-  // so handleOpen/handleOpenRecent can't be made fully stable either - their
-  // dependency array is honest about that rather than omitting loadDocument
-  // to fake stability.
   const handleOpen = useCallback(async () => {
     try {
       // Without this the macOS panel reopens the last folder browsed, which
@@ -459,7 +466,7 @@ function App() {
   }, [isDesktopApp, hasDirtyDocuments]);
 
   // Genuinely depends on `documents` (to look up the document by id) and on
-  // `closeDocument`, which - like loadDocument - can't be made
+  // `closeDocument`, which can't be made
   // documents-independent (see useDocumentState.ts). Left unstable on
   // purpose rather than dropping a real dependency.
   const handleCloseDocument = useCallback(
