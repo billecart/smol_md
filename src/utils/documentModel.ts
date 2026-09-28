@@ -47,6 +47,25 @@ export function setDocumentMarkdown(
   };
 }
 
+// Applies text the rich editor had not reported yet (see RichEditor's flush)
+// to the document it belongs to, so a save or an unsaved-changes check sees
+// the edit before React re-renders. null means there was nothing pending.
+export function applyPendingMarkdown(
+  documents: OpenDocument[],
+  documentId: string,
+  markdown: string | null,
+): OpenDocument[] {
+  if (markdown === null) {
+    return documents;
+  }
+
+  return documents.map((document) =>
+    document.id === documentId
+      ? setDocumentMarkdown(document, markdown)
+      : document,
+  );
+}
+
 export function markDocumentSaved(
   document: OpenDocument,
   markdown: string,

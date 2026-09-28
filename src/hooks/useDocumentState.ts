@@ -139,7 +139,12 @@ export function useDocumentState() {
       (document) => document.id !== documentId,
     );
 
-    setDocuments(nextDocuments);
+    // Filters the latest list rather than writing back `nextDocuments`: an
+    // edit to another tab the rich editor flushed just before this has not
+    // rendered yet, and would be dropped.
+    setDocuments((currentDocuments) =>
+      currentDocuments.filter((document) => document.id !== documentId),
+    );
 
     if (documentId === activeDocument.id) {
       const nextActiveDocument =

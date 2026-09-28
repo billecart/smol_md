@@ -3,12 +3,14 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { isRunningInTauri } from "../services/fileService";
 
-export function useBeforeCloseWarning(isDirty: boolean) {
-  const isDirtyRef = useRef(isDirty);
+// Takes a function rather than a flag so the check can pull in an edit the
+// rich editor has not reported yet (see flushDocuments in App.tsx).
+export function useBeforeCloseWarning(hasUnsavedChanges: () => boolean) {
+  const hasUnsavedChangesRef = useRef(hasUnsavedChanges);
 
   useEffect(() => {
-    isDirtyRef.current = isDirty;
-  }, [isDirty]);
+    hasUnsavedChangesRef.current = hasUnsavedChanges;
+  }, [hasUnsavedChanges]);
 
   useEffect(() => {
     if (isRunningInTauri()) {
@@ -16,7 +18,7 @@ export function useBeforeCloseWarning(isDirty: boolean) {
     }
 
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (!isDirty) {
+      if (!hasUnsavedChangesRef.current()) {
         return;
       }
 
@@ -26,7 +28,7 @@ export function useBeforeCloseWarning(isDirty: boolean) {
 
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [isDirty]);
+  }, []);
 
   useEffect(() => {
     if (!isRunningInTauri()) {
@@ -40,7 +42,7 @@ export function useBeforeCloseWarning(isDirty: boolean) {
       .onCloseRequested(async (event) => {
         event.preventDefault();
 
-        if (!isDirtyRef.current) {
+        if (!hasUnsavedChangesRef.current()) {
           await appWindow.destroy();
           return;
         }
