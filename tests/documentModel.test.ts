@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "./testHarness";
 import {
   addLoadedDocuments,
+  applyPendingMarkdown,
   createDocument,
   createLoadedDocument,
   markDocumentSaved,
@@ -210,4 +211,42 @@ test("several files opened next to an open file are appended, duplicates skipped
   );
   assert.equal(next.documents[0], open);
   assert.equal(next.activeDocumentId, next.documents[2]!.id);
+});
+
+// The rich editor reports edits 200ms late; these cover what App does with an
+// edit it pulled out of the editor early (before a save, close or quit).
+test("a pending edit makes a clean document dirty before the editor reports it", () => {
+  const clean = createDocument({ markdown: "# A\n", originalMarkdown: "# A\n" });
+  const other = createDocument({ markdown: "# B\n", originalMarkdown: "# B\n" });
+
+  const next = applyPendingMarkdown([clean, other], clean.id, "# A!\n");
+
+  assert.equal(next[0]!.markdown, "# A!\n");
+  assert.equal(next[0]!.isDirty, true);
+  assert.equal(next[1], other);
+});
+
+test("no pending edit leaves the document list untouched", () => {
+  const documents = [createDocument({ markdown: "# A\n", originalMarkdown: "# A\n" })];
+
+  assert.equal(applyPendingMarkdown(documents, documents[0]!.id, null), documents);
+});
+
+test("a pending edit that restores the saved text leaves the document clean", () => {
+  const edited = setDocumentMarkdown(
+    createDocument({ markdown: "# A\n", originalMarkdown: "# A\n" }),
+    "# A changed\n",
+  );
+
+  const [next] = applyPendingMarkdown([edited], edited.id, "# A\n");
+
+  assert.equal(next!.isDirty, false);
+});
+
+test("a pending edit for a closed document is dropped", () => {
+  const documents = [createDocument({ markdown: "# A\n", originalMarkdown: "# A\n" })];
+
+  const next = applyPendingMarkdown(documents, "closed-id", "# gone\n");
+
+  assert.deepEqual(next, documents);
 });

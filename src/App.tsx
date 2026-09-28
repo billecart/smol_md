@@ -43,6 +43,7 @@ import {
   saveRecentDocuments,
   type RecentDocument,
 } from "./utils/recentDocuments";
+import { applyPendingMarkdown } from "./utils/documentModel";
 import { pickDefaultDirectory } from "./utils/filePaths";
 import { isUnsafeEmptyOverwrite } from "./utils/saveSafety";
 import { zoomIn, zoomOut, zoomStyle } from "./utils/zoom";
@@ -91,6 +92,27 @@ function App() {
   const isDesktopApp = isRunningInTauri();
   const isMacDesktopApp = isDesktopApp && isMacOs();
   const richEditorRef = useRef<RichEditorHandle>(null);
+  const latestDocumentsRef = useRef({ documents, activeDocumentId });
+  latestDocumentsRef.current = { documents, activeDocumentId };
+
+  // The rich editor reports edits 200ms after the last keystroke, so
+  // `documents` can be missing the newest one. Everything that saves the text
+  // or decides whether it can be thrown away goes through here first. Stable,
+  // so the quit and window-close listeners can call it too.
+  const flushDocuments = useCallback(() => {
+    const { documents, activeDocumentId } = latestDocumentsRef.current;
+
+    return applyPendingMarkdown(
+      documents,
+      activeDocumentId,
+      richEditorRef.current?.flush() ?? null,
+    );
+  }, []);
+
+  const hasUnsavedChanges = useCallback(
+    () => flushDocuments().some((document) => document.isDirty),
+    [flushDocuments],
+  );
 
   const title = useMemo(() => {
     const dirtyMark = isDirty ? "*" : "";
@@ -101,7 +123,7 @@ function App() {
     document.title = title;
   }, [title]);
 
-  useBeforeCloseWarning(hasDirtyDocuments);
+  useBeforeCloseWarning(hasUnsavedChanges);
 
   // Cmd+Q (and other app-level quit paths) don't go through the window's
   // onCloseRequested handler in useBeforeCloseWarning - they go through
@@ -117,11 +139,15 @@ function App() {
     void setUnsavedChanges(hasDirtyDocuments);
   }, [isDesktopApp, hasDirtyDocuments]);
 
-  const hasDirtyDocumentsRef = useRef(hasDirtyDocuments);
-
-  useEffect(() => {
-    hasDirtyDocumentsRef.current = hasDirtyDocuments;
-  }, [hasDirtyDocuments]);
+  // The mirror above only updates once the rich editor reports an edit, up to
+  // 200ms after the keystroke; Cmd+Q in that window would quit without asking.
+  // Raising the flag early is safe: the quit-requested handler below checks
+  // for real unsaved changes and quits straight away if there are none.
+  const handleEditPending = useCallback(() => {
+    if (isDesktopApp) {
+      void setUnsavedChanges(true);
+    }
+  }, [isDesktopApp]);
 
   const isHandlingQuitRequestRef = useRef(false);
 
@@ -144,7 +170,7 @@ function App() {
         isHandlingQuitRequestRef.current = true;
 
         try {
-          if (hasDirtyDocumentsRef.current) {
+          if (hasUnsavedChanges()) {
             const shouldClose = await confirm(
               "You have unsaved changes. Close without saving?",
               {
@@ -180,7 +206,7 @@ function App() {
       isCancelled = true;
       unlisten?.();
     };
-  }, [isDesktopApp]);
+  }, [isDesktopApp, hasUnsavedChanges]);
 
   useEffect(() => {
     if (isMacDesktopApp) {
@@ -387,15 +413,17 @@ function App() {
   // Genuinely depends on `markdown`, changes every keystroke, left unstable
   // on purpose (see handleSave below for the matching case).
   const handleSaveAs = useCallback(async () => {
+    const latestMarkdown = richEditorRef.current?.flush() ?? markdown;
+
     try {
-      const result = await saveMarkdownFileAs(markdown, fileName);
+      const result = await saveMarkdownFileAs(latestMarkdown, fileName);
 
       if (!result) {
         setMessage("Save As cancelled");
         return;
       }
 
-      markSaved(markdown, result.filePath, result.fileName);
+      markSaved(latestMarkdown, result.filePath, result.fileName);
       rememberRecentDocument({
         filePath: result.filePath,
         fileName: result.fileName,
@@ -418,26 +446,22 @@ function App() {
       return;
     }
 
+    const latestMarkdown = richEditorRef.current?.flush() ?? markdown;
+
     try {
-      if (isUnsafeEmptyOverwrite(markdown, originalMarkdown, filePath)) {
+      if (isUnsafeEmptyOverwrite(latestMarkdown, originalMarkdown, filePath)) {
         reportProblem("Save blocked: empty content was not written over the existing file");
         return;
       }
 
-      await saveMarkdownFile(filePath, markdown);
-      markSaved(markdown, filePath);
+      await saveMarkdownFile(filePath, latestMarkdown);
+      markSaved(latestMarkdown, filePath);
       setMessage("Saved");
     } catch (error) {
       reportProblem(getErrorMessage(error));
     }
   }, [filePath, markdown, originalMarkdown, markSaved, handleSaveAs]);
 
-  // hasDirtyDocuments is a boolean derived from `documents` on every render,
-  // but its *value* only flips when a document's dirty state actually
-  // changes (not on every keystroke once a document is already dirty), so
-  // this stays stable across most keystrokes even though it's recomputed
-  // every render.
-  //
   // Declared before the per-document close handlers because closing the last
   // tab falls through to closing the window.
   const handleCloseWindow = useCallback(async () => {
@@ -446,7 +470,7 @@ function App() {
       return;
     }
 
-    if (hasDirtyDocuments) {
+    if (hasUnsavedChanges()) {
       const shouldClose = await confirm(
         "You have unsaved changes. Close without saving?",
         {
@@ -463,15 +487,14 @@ function App() {
     }
 
     await getCurrentWindow().destroy();
-  }, [isDesktopApp, hasDirtyDocuments]);
+  }, [isDesktopApp, hasUnsavedChanges]);
 
-  // Genuinely depends on `documents` (to look up the document by id) and on
-  // `closeDocument`, which can't be made
-  // documents-independent (see useDocumentState.ts). Left unstable on
-  // purpose rather than dropping a real dependency.
+  // Depends on `closeDocument`, which can't be made documents-independent
+  // (see useDocumentState.ts). Left unstable on purpose rather than dropping
+  // a real dependency.
   const handleCloseDocument = useCallback(
     async (documentId: string) => {
-      const document = documents.find((item) => item.id === documentId);
+      const document = flushDocuments().find((item) => item.id === documentId);
 
       if (!document) {
         return;
@@ -484,7 +507,7 @@ function App() {
       closeDocument(documentId);
       setMessage(`Closed ${document.fileName}`);
     },
-    [documents, closeDocument, confirmDiscard],
+    [flushDocuments, closeDocument, confirmDiscard],
   );
 
   // Closing the last remaining tab has nowhere to go: closeDocument would
@@ -500,11 +523,8 @@ function App() {
     await handleCloseDocument(activeDocumentId);
   }, [documents.length, activeDocumentId, handleCloseDocument, handleCloseWindow]);
 
-  // Genuinely depends on `documents` (to find dirty documents) and
-  // `resetWorkspace`; `documents` changes every keystroke so this can't be
-  // fully stabilized either.
   const handleCloseAllDocuments = useCallback(async () => {
-    const dirtyDocuments = documents.filter((document) => document.isDirty);
+    const dirtyDocuments = flushDocuments().filter((document) => document.isDirty);
 
     if (dirtyDocuments.length > 0) {
       const message =
@@ -528,33 +548,20 @@ function App() {
 
     resetWorkspace();
     setMessage("Closed all documents");
-  }, [documents, isDesktopApp, resetWorkspace]);
+  }, [flushDocuments, isDesktopApp, resetWorkspace]);
 
 
-  // Genuinely depends on `markdown`: switching to source mode snapshots the
-  // current markdown via setMarkdown. Changes every keystroke, left
-  // unstable on purpose (same situation as handleSave/handleSaveAs).
-  const handleEditorModeChange = useCallback(
-    (mode: EditorMode) => {
-      if (mode === "source") {
-        setMarkdown(markdown);
-      }
-
-      setEditorMode(mode);
-    },
-    [markdown, setMarkdown],
-  );
+  // Flushing first puts the rich editor's last edit into the same render that
+  // mounts Source, so Source never starts from the text before it.
+  const handleEditorModeChange = useCallback((mode: EditorMode) => {
+    richEditorRef.current?.flush();
+    setEditorMode(mode);
+  }, []);
 
   const toggleEditorMode = useCallback(() => {
-    setEditorMode((currentMode) => {
-      if (currentMode === "rich") {
-        setMarkdown(markdown);
-        return "source";
-      }
-
-      return "rich";
-    });
-  }, [markdown, setMarkdown]);
+    richEditorRef.current?.flush();
+    setEditorMode((currentMode) => (currentMode === "rich" ? "source" : "rich"));
+  }, []);
 
   // Writes the PDF with no print panel; the only dialog is where to put it.
   const handleExportPdf = useCallback(async () => {
@@ -625,7 +632,7 @@ function App() {
   // Most of these handlers are recreated often (handleOpen/handleSave/etc.
   // depend on things that change every keystroke), so the menu-action
   // listener effect below can't list them as dependencies without
-  // resubscribing constantly. Mirroring the hasDirtyDocumentsRef pattern
+  // resubscribing constantly. Mirroring the latestDocumentsRef pattern
   // above: a ref updated after every render holds the latest closures, and
   // the listener effect itself only depends on `isDesktopApp`.
   const menuActionHandlersRef = useRef({
@@ -855,6 +862,7 @@ function App() {
               ref={richEditorRef}
               value={markdown}
               onChange={setMarkdown}
+              onEditPending={handleEditPending}
               findQuery={find.isOpen ? find.query : ""}
               findActiveIndex={find.activeIndex}
               onFindMatchCount={find.setMatchCount}

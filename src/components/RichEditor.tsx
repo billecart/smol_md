@@ -13,6 +13,7 @@ import {
   editorViewCtx,
   remarkStringifyOptionsCtx,
   rootCtx,
+  serializerCtx,
 } from "@milkdown/kit/core";
 import {
   blockquoteSchema,
@@ -119,6 +120,8 @@ function closeLinkDialog() {
 type RichEditorProps = {
   value: string;
   onChange: (value: string) => void;
+  // Called as soon as an edit starts, ahead of onChange's 200ms delay.
+  onEditPending?: () => void;
   findQuery?: string;
   findActiveIndex?: number;
   onFindMatchCount?: (count: number) => void;
@@ -145,6 +148,9 @@ export type FormatCommandId =
 
 export type RichEditorHandle = {
   runFormatCommand: (command: FormatCommandId) => void;
+  // Hands App any edit the listener has not delivered yet and returns the
+  // editor's markdown, or null when App already has the latest text.
+  flush: () => string | null;
 };
 
 type ContextMenuPosition = {
@@ -682,7 +688,14 @@ const findDecorationPlugin = $prose(
 
 export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(
   function RichEditor(
-    { value, onChange, findQuery = "", findActiveIndex = 0, onFindMatchCount },
+    {
+      value,
+      onChange,
+      onEditPending,
+      findQuery = "",
+      findActiveIndex = 0,
+      onFindMatchCount,
+    },
     ref,
   ) {
     const normalizedValue = normalizeMarkdownLineBreaks(value);
@@ -693,6 +706,7 @@ export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(
           ref={ref}
           value={normalizedValue}
           onChange={onChange}
+          onEditPending={onEditPending}
           findQuery={findQuery}
           findActiveIndex={findActiveIndex}
           onFindMatchCount={onFindMatchCount}
@@ -704,14 +718,60 @@ export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(
 
 const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
   function RichEditorInner(
-    { value, onChange, findQuery, findActiveIndex, onFindMatchCount },
+    { value, onChange, onEditPending, findQuery, findActiveIndex, onFindMatchCount },
     ref,
   ) {
   const lastKnownMarkdown = useRef(value);
-  const isSyncingFromApp = useRef(false);
   // The bullet marker saves use, read from markdown the app hands in. The
   // editor's own output already uses it, so it is never read back from there.
   const bulletMarker = useRef(detectBulletMarker(value));
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const onEditPendingRef = useRef(onEditPending);
+  onEditPendingRef.current = onEditPending;
+
+  // The listener only calls back 200ms after the last edit, so App's copy of
+  // the text lags behind the editor. Anything that reads it in that window -
+  // switching to Source, saving, closing a tab - would see the text from
+  // before the edit. flush() closes the gap. It only serializes when there is
+  // a real edit pending: serializing an untouched document can still change
+  // it (`*` bullets come back as `-`), which would mark it dirty.
+  const hasPendingEdit = useRef(false);
+  const isUnmounted = useRef(false);
+  const editorViewRef = useRef<EditorView | null>(null);
+  const serializerRef = useRef<((doc: ProseNode) => string) | null>(null);
+
+  const deliverMarkdown = (markdown: string) => {
+    const normalizedMarkdown = normalizeMarkdownLineBreaks(markdown);
+    hasPendingEdit.current = false;
+    lastKnownMarkdown.current = normalizedMarkdown;
+    onChangeRef.current(normalizedMarkdown);
+  };
+
+  const flush = () => {
+    const view = editorViewRef.current;
+    const serialize = serializerRef.current;
+
+    if (!hasPendingEdit.current || !view || !serialize) {
+      return null;
+    }
+
+    deliverMarkdown(serialize(view.state.doc));
+    return lastKnownMarkdown.current;
+  };
+
+  // Unmounting (switching tabs or modes) hands over the last edit, and stops
+  // the listener's timer, which outlives the editor, from delivering it again
+  // over whatever was typed in Source mode since. Reset on mount because
+  // StrictMode unmounts and remounts once in development.
+  useEffect(() => {
+    isUnmounted.current = false;
+
+    return () => {
+      flush();
+      isUnmounted.current = true;
+    };
+  }, []);
   const [contextMenuLink, setContextMenuLink] = useState<LinkRange | null>(null);
   const [contextMenuPosition, setContextMenuPosition] =
     useState<ContextMenuPosition | null>(null);
@@ -762,12 +822,12 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
           ctx.set(rootCtx, root);
           ctx.set(defaultValueCtx, value);
           ctx.get(listenerCtx).markdownUpdated((_, markdown) => {
-            const normalizedMarkdown = normalizeMarkdownLineBreaks(markdown);
-            lastKnownMarkdown.current = normalizedMarkdown;
-
-            if (!isSyncingFromApp.current) {
-              onChange(normalizedMarkdown);
+            // Already delivered by flush(), or the editor is gone.
+            if (!hasPendingEdit.current || isUnmounted.current) {
+              return;
             }
+
+            deliverMarkdown(markdown);
           });
           // Register ==text== serializer for the highlight MDAST node type,
           // and list handlers that keep tight lists tight (see markdownLists.ts).
@@ -804,7 +864,34 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
         .use(commonmark)
         .use(gfm)
         .use(history)
-        .use(listener),
+        .use(listener)
+        .use(
+          $prose(
+            (ctx) =>
+              new Plugin({
+                state: {
+                  init: () => null,
+                  // Same rule the listener uses to decide what to report.
+                  apply: (tr) => {
+                    if (tr.docChanged && tr.getMeta("addToHistory") !== false) {
+                      if (!hasPendingEdit.current) {
+                        onEditPendingRef.current?.();
+                      }
+
+                      hasPendingEdit.current = true;
+                    }
+
+                    return null;
+                  },
+                },
+                view: (editorView) => {
+                  editorViewRef.current = editorView;
+                  serializerRef.current = ctx.get(serializerCtx);
+                  return {};
+                },
+              }),
+          ),
+        ),
     [],
   );
 
@@ -819,13 +906,11 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
       return;
     }
 
-    isSyncingFromApp.current = true;
     bulletMarker.current = detectBulletMarker(value);
     editor.action(replaceAll(value, true));
     lastKnownMarkdown.current = value;
-    window.queueMicrotask(() => {
-      isSyncingFromApp.current = false;
-    });
+    // Whatever was pending has just been replaced by App's text.
+    hasPendingEdit.current = false;
   }, [get, loading, value]);
 
   // `get` from useEditor is a new function on every render, so these effects
@@ -1153,7 +1238,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     }
   };
 
-  useImperativeHandle(ref, () => ({ runFormatCommand }));
+  useImperativeHandle(ref, () => ({ runFormatCommand, flush }));
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const menuWidth = 184;
