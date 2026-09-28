@@ -4,6 +4,13 @@ import {
   countWords,
   type CounterMode,
 } from "../utils/editorStats";
+import {
+  applyDocumentFont,
+  DOCUMENT_FONTS,
+  loadDocumentFont,
+  saveDocumentFont,
+  type DocumentFont,
+} from "../utils/documentFont";
 import { getSaveState, type SaveState } from "../utils/saveState";
 
 type StatusBarProps = {
@@ -22,6 +29,7 @@ function StatusBarComponent({
   message,
 }: StatusBarProps) {
   const [counterMode, setCounterMode] = useState<CounterMode>("words");
+  const [documentFont, setDocumentFont] = useState<DocumentFont>(loadDocumentFont);
   // Counting scans the whole document, so keep it off the keystroke path. The
   // counter is allowed to lag a frame or two behind the text; typing is not.
   const countedMarkdown = useDeferredValue(markdown);
@@ -46,6 +54,22 @@ function StatusBarComponent({
       <span className="path-text">{documentLabel}</span>
       <span>{saveLabel}</span>
       <span className="status-message">{statusMessage}</span>
+      <button
+        type="button"
+        className={`font-toggle font-toggle-${documentFont}`}
+        aria-label={`Document font: ${documentFont}`}
+        onClick={() => {
+          const nextFont =
+            DOCUMENT_FONTS[
+              (DOCUMENT_FONTS.indexOf(documentFont) + 1) % DOCUMENT_FONTS.length
+            ]!;
+          setDocumentFont(nextFont);
+          applyDocumentFont(nextFont);
+          saveDocumentFont(nextFont);
+        }}
+      >
+        {documentFont}
+      </button>
       <button
         type="button"
         className="counter-toggle"

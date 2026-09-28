@@ -15,6 +15,10 @@
   --highlight-background: rgba(0, 66, 37, 0.08);
   --font-ui: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-editor: "IBM Plex Mono", "Cascadia Mono", "Cascadia Code", "Roboto Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --font-serif: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+  /* The document text only; chrome and code stay on --font-ui/--font-editor.
+     Switched by the mono/sans/serif toggle in the status bar. */
+  --font-document: var(--font-editor);
   --editor-line-height: 1.75;
   --editor-font-size: 16px;
   --editor-column-width: min(660px, calc(100% - 80px));
@@ -25,6 +29,14 @@
   font-family: var(--font-ui);
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
+}
+
+:root[data-document-font="sans"] {
+  --font-document: var(--font-ui);
+}
+
+:root[data-document-font="serif"] {
+  --font-document: var(--font-serif);
 }
 
 * {
@@ -522,7 +534,7 @@ input:focus-visible {
   resize: none;
   outline: none;
   caret-color: var(--color-accent);
-  font-family: var(--font-editor);
+  font-family: var(--font-document);
   font-size: var(--editor-font-size);
   font-weight: 400;
   line-height: var(--editor-line-height);
@@ -717,7 +729,7 @@ input:focus-visible {
   outline: none;
   color: var(--editor-text);
   caret-color: var(--color-accent);
-  font-family: var(--font-editor);
+  font-family: var(--font-document);
   font-size: var(--editor-font-size);
   font-weight: 400;
   line-height: var(--editor-line-height);
@@ -900,6 +912,7 @@ input:focus-visible {
 
 .rich-editor .ProseMirror pre code {
   padding: 0;
+  font-family: var(--font-editor);
   border-radius: 0;
   background: none;
   font-size: 0.94em;
@@ -966,7 +979,7 @@ input:focus-visible {
   bottom: 0;
   left: 0;
   display: grid;
-  grid-template-columns: minmax(120px, 1.4fr) auto minmax(120px, 1fr) auto;
+  grid-template-columns: minmax(120px, 1.4fr) auto minmax(120px, 1fr) auto auto;
   gap: 16px;
   align-items: center;
   min-height: 34px;
@@ -1011,14 +1024,30 @@ input:focus-visible {
   white-space: nowrap;
 }
 
-.counter-toggle {
+.font-toggle {
   grid-column: 4;
+  padding: 0;
+  color: inherit;
+  white-space: nowrap;
+}
+
+.font-toggle-sans {
+  font-family: var(--font-ui);
+}
+
+.font-toggle-serif {
+  font-family: var(--font-serif);
+}
+
+.counter-toggle {
+  grid-column: 5;
   justify-self: end;
   padding: 0;
   color: inherit;
   white-space: nowrap;
 }
 
+.font-toggle:hover,
 .counter-toggle:hover {
   color: var(--text-normal);
   text-decoration: underline;
@@ -1073,8 +1102,12 @@ input:focus-visible {
   }
 
   .status-bar {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr auto auto;
     gap: 6px 12px;
+  }
+
+  .font-toggle {
+    grid-column: auto;
   }
 
   .status-message,
