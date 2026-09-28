@@ -19,6 +19,7 @@ import {
   bulletListSchema,
   codeBlockSchema,
   commonmark,
+  hardbreakSchema,
   headingSchema,
   linkSchema,
   paragraphSchema,
@@ -62,6 +63,12 @@ import {
   MARKDOWN_LINK_INPUT,
   splitMarkdownLinks,
 } from "../utils/markdownLinks";
+import {
+  convertBulletParagraphs,
+  convertPastedBullets,
+  fitPastedListToListItem,
+  type BulletListTypes,
+} from "../utils/unicodeBullets";
 import {
   backspaceMergesHeadingAsBodyText,
   backspaceOutdentsListItem,
@@ -130,6 +137,7 @@ export type FormatCommandId =
   | "h3"
   | "bullet-list"
   | "ordered-list"
+  | "convert-bullets"
   | "blockquote"
   | "code-block"
   | "link"
@@ -387,6 +395,29 @@ const toggleHighlightCommand = $command("ToggleHighlight", (ctx) => () =>
   toggleMark(highlightSchema.type(ctx)),
 );
 
+function bulletListTypes(ctx: Ctx): BulletListTypes {
+  return {
+    bulletList: bulletListSchema.type(ctx),
+    listItem: listItemSchema.type(ctx),
+    paragraph: paragraphSchema.type(ctx),
+    hardBreak: hardbreakSchema.type(ctx),
+  };
+}
+
+// The slice to paste once bullet lines are real list items, or the same slice
+// when there were none.
+function withPastedBullets(ctx: Ctx, state: EditorState, slice: Slice): Slice {
+  const types = bulletListTypes(ctx);
+  const converted = convertPastedBullets(slice, types);
+  if (converted === slice) return slice;
+
+  const { $from } = state.selection;
+  const caretInListItem =
+    $from.depth > 1 && $from.node(-1).type === types.listItem;
+
+  return fitPastedListToListItem(converted, caretInListItem, types);
+}
+
 // Typing `[label](https://example.com)` in Rich mode used to leave the whole
 // thing as plain text, because nothing turned it into a link. Serializing then
 // escaped it - `\[label]\(https\://example.com)` - since remark has to stop
@@ -438,12 +469,51 @@ const markdownLinkPastePlugin = $prose((ctx) => {
         }
 
         try {
-          const slice = markdownToSlice(text)(ctx);
+          const slice = withPastedBullets(
+            ctx,
+            view.state,
+            markdownToSlice(text)(ctx),
+          );
           view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
           return true;
         } catch {
           return false;
         }
+      },
+    },
+  });
+});
+
+// Lines pasted with "•" (or "◦", "▪", "–" ...) bullets become a real bullet
+// list rather than paragraphs that start with the character - see
+// unicodeBullets.ts. This runs after ProseMirror has parsed the clipboard, so
+// it covers HTML from rich-text apps as well as plain text. Registered after
+// markdownLinkPastePlugin, which does the same conversion on its own slice.
+//
+// Copies made inside the editor are left alone: those are the user's own
+// paragraphs being moved around, and a file that already has "• item" lines
+// keeps them.
+const unicodeBulletPastePlugin = $prose((ctx) => {
+  return new Plugin({
+    key: new PluginKey("smolUnicodeBulletPaste"),
+    props: {
+      handlePaste: (view, event, slice) => {
+        if (view.state.selection.$from.parent.type.spec.code) return false;
+        if (event.clipboardData?.getData("text/html").includes("data-pm-slice")) {
+          return false;
+        }
+
+        const converted = withPastedBullets(ctx, view.state, slice);
+        if (converted === slice) return false;
+
+        view.dispatch(
+          view.state.tr
+            .replaceSelection(converted)
+            .scrollIntoView()
+            .setMeta("paste", true)
+            .setMeta("uiEvent", "paste"),
+        );
+        return true;
       },
     },
   });
@@ -725,6 +795,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
         .use(highlightInputRule)
         .use(linkInputRule)
         .use(markdownLinkPastePlugin)
+        .use(unicodeBulletPastePlugin)
         .use(linkClickPlugin)
         .use(toggleHighlightCommand)
         .use(customEnterPlugin)
@@ -994,6 +1065,19 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     setContextMenuPosition(null);
   };
 
+  // Existing documents keep their "• item" lines until this is run on them;
+  // pastes are converted as they come in (see unicodeBulletPastePlugin).
+  const runConvertBullets = () => {
+    const editor = get();
+    if (!editor) return;
+    editor.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      convertBulletParagraphs(bulletListTypes(ctx))(view.state, view.dispatch);
+      view.focus();
+    });
+    setContextMenuPosition(null);
+  };
+
   const runBlockquote = () => {
     const editor = get();
     if (!editor) return;
@@ -1051,6 +1135,9 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
       case "ordered-list":
         runOrderedList();
         break;
+      case "convert-bullets":
+        runConvertBullets();
+        break;
       case "blockquote":
         runBlockquote();
         break;
@@ -1070,7 +1157,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const menuWidth = 184;
-    const menuHeight = 456;
+    const menuHeight = 484;
 
     // Resolve the link from where the pointer actually is rather than from the
     // selection: whether a right-click moves the caret is up to the browser,
@@ -1199,6 +1286,9 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
           </button>
           <button type="button" role="menuitem" onClick={runOrderedList}>
             Numbered list
+          </button>
+          <button type="button" role="menuitem" onClick={runConvertBullets}>
+            Convert • lines to list
           </button>
           <button type="button" role="menuitem" onClick={runBlockquote}>
             Blockquote
