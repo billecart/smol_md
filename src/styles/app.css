@@ -809,6 +809,22 @@ input:focus-visible {
   padding-left: 1.6em;
 }
 
+/* Bullets are the document font's own "•", not the browser's disc marker.
+   The disc is drawn well larger than the character, so a real list sat next
+   to pasted "• " lines with visibly bigger bullets, and its size differed
+   between Chromium and WebKit. A character renders the same in both and
+   follows the mono/sans/serif toggle. Task items draw a checkbox instead. */
+.rich-editor .ProseMirror ul > li:not([data-item-type="task"]) {
+  position: relative;
+  list-style: none;
+}
+
+.rich-editor .ProseMirror ul > li:not([data-item-type="task"])::before {
+  content: "•";
+  position: absolute;
+  left: -1em;
+}
+
 /* Matches the body leading so a document has one rhythm, not two. */
 .rich-editor .ProseMirror li {
   line-height: var(--editor-line-height);
