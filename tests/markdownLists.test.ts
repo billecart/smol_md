@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import type { Root } from "mdast";
+import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import remarkStringify from "remark-stringify";
 import { unified } from "unified";
@@ -62,6 +63,29 @@ test("task lists stay tight", () => {
   // structure is the same one Rich mode serializes.
   const markdown = "- [ ] a\n- [x] b\n";
   assert.equal(roundTrip(markdown, listStringifyHandlers()), "- \\[ ] a\n- \\[x] b\n");
+});
+
+// With gfm loaded, as in Rich mode. Our listItem handler replaces gfm's, so it
+// has to write the checkbox itself or every save drops it.
+function roundTripGfm(markdown: string) {
+  const handlers = listStringifyHandlers();
+  const processor = unified().use(remarkParse).use(remarkGfm);
+  const tree = processor.parse(markdown) as Root;
+  processor.runSync(tree);
+  return unified()
+    .use(remarkGfm)
+    .use(remarkStringify, { handlers })
+    .stringify(tree);
+}
+
+test("task items keep their checkboxes", () => {
+  const markdown = "- [ ] open\n- [x] done\n- plain\n";
+  assert.equal(roundTripGfm(markdown), markdown);
+});
+
+test("nested and ordered task items keep their checkboxes", () => {
+  const markdown = "- [ ] parent\n  - [x] child\n\n1. [x] first\n2. [ ] second\n";
+  assert.equal(roundTripGfm(markdown), markdown);
 });
 
 test("the bullet marker comes from the getter on every save", () => {

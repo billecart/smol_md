@@ -553,6 +553,84 @@ const linkClickPlugin = $prose((ctx) => {
   });
 });
 
+// Milkdown's gfm preset renders a task item as a bare <li data-checked> with
+// no checkbox. This adds one as a widget at the start of each task item.
+// Clicking it flips the item's `checked` attr in a transaction, so the change
+// is undoable and saves back to markdown as [x] / [ ].
+function buildTaskCheckboxes(doc: ProseNode): DecorationSet {
+  const widgets: Decoration[] = [];
+  doc.descendants((node, pos) => {
+    if (node.type.name !== "list_item" || node.attrs.checked == null) return;
+    const checked = node.attrs.checked === true;
+    widgets.push(
+      Decoration.widget(
+        pos + 1,
+        (view, getPos) => createTaskCheckbox(view, getPos, checked),
+        {
+          side: -1,
+          ignoreSelection: true,
+          stopEvent: () => true,
+          // A new key when the state flips makes ProseMirror redraw the input
+          // instead of reusing the old one.
+          key: `task-${checked}`,
+        },
+      ),
+    );
+  });
+  return DecorationSet.create(doc, widgets);
+}
+
+function createTaskCheckbox(
+  view: EditorView,
+  getPos: () => number | undefined,
+  checked: boolean,
+): HTMLElement {
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.className = "smol-task-checkbox";
+  input.checked = checked;
+  input.tabIndex = -1;
+  input.setAttribute("aria-label", checked ? "Mark as not done" : "Mark as done");
+  // Keep the caret and focus where they were.
+  input.addEventListener("mousedown", (event) => event.preventDefault());
+  input.addEventListener("click", (event) => {
+    // The redraw after the transaction shows the new state.
+    event.preventDefault();
+    if (!view.editable) return;
+    const widgetPos = getPos();
+    if (widgetPos == null) return;
+    const itemPos = widgetPos - 1;
+    const item = view.state.doc.nodeAt(itemPos);
+    if (!item || item.attrs.checked == null) return;
+    view.dispatch(
+      view.state.tr.setNodeMarkup(itemPos, undefined, {
+        ...item.attrs,
+        checked: !item.attrs.checked,
+      }),
+    );
+    // Without focus in the editor, Cmd+Z right after a tick never reaches
+    // ProseMirror's history. Focus keeps the caret where it was.
+    view.focus();
+  });
+  return input;
+}
+
+const taskCheckboxPlugin = $prose(
+  () =>
+    new Plugin<DecorationSet>({
+      key: new PluginKey("smolTaskCheckbox"),
+      state: {
+        init: (_, state) => buildTaskCheckboxes(state.doc),
+        apply: (tr, set) => (tr.docChanged ? buildTaskCheckboxes(tr.doc) : set),
+      },
+      props: {
+        decorations(state) {
+          return this.getState(state);
+        },
+      },
+    }),
+);
+
 const linkInputRule = $inputRule((ctx) =>
   new InputRule(MARKDOWN_LINK_INPUT, (state, match, start, end) => {
     const [, text, href, title] = match;
@@ -857,6 +935,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
         .use(markdownLinkPastePlugin)
         .use(unicodeBulletPastePlugin)
         .use(linkClickPlugin)
+        .use(taskCheckboxPlugin)
         .use(toggleHighlightCommand)
         .use(customEnterPlugin)
         .use(formattingKeymap)

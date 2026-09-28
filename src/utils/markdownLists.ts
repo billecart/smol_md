@@ -63,9 +63,24 @@ export function listStringifyHandlers(getBullet: () => BulletMarker = () => DEFA
     return defaultHandlers.list(node, parent, state, info);
   };
 
+  // This replaces gfm's listItem handler too, which is the one that writes a
+  // task item's `[ ] ` / `[x] `. Without the same step here every save dropped
+  // the checkboxes. Same logic as mdast-util-gfm-task-list-item.
   const listItem: Handle = (node: ListItem, parent, state: State, info: Info) => {
     node.spread = spreadAsBoolean(node.spread);
-    return defaultHandlers.listItem(node, parent, state, info);
+
+    const head = node.children[0];
+    const checkable = typeof node.checked === "boolean" && head?.type === "paragraph";
+    if (!checkable) return defaultHandlers.listItem(node, parent, state, info);
+
+    const checkbox = `[${node.checked ? "x" : " "}] `;
+    const tracker = state.createTracker(info);
+    tracker.move(checkbox);
+    const value = defaultHandlers.listItem(node, parent, state, {
+      ...info,
+      ...tracker.current(),
+    });
+    return value.replace(/^(?:[*+-]|\d+\.)([\r\n]| {1,3})/, (marker) => marker + checkbox);
   };
 
   return { list, listItem };

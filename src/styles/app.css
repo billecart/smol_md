@@ -957,16 +957,25 @@ input:focus-visible {
   color: var(--text-muted);
 }
 
+/* The checkbox takes the column the bullet sits in, so a task's text lines up
+   with a bullet item's text. Everything after it - the paragraph and any
+   nested list - stays in the second column. Grid rather than flex so a nested
+   list wraps below the text instead of beside it. */
 .rich-editor .ProseMirror li[data-item-type="task"] {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1.6em minmax(0, 1fr);
   align-items: baseline;
-  gap: 0.5em;
   list-style: none;
   margin-left: -1.6em;
 }
 
-.rich-editor .ProseMirror li[data-item-type="task"] input[type="checkbox"] {
-  flex: 0 0 auto;
+.rich-editor .ProseMirror li[data-item-type="task"] > :not(.smol-task-checkbox) {
+  grid-column: 2;
+}
+
+.rich-editor .ProseMirror .smol-task-checkbox {
+  grid-column: 1;
+  justify-self: start;
   margin: 0;
   accent-color: var(--color-accent);
   cursor: pointer;
