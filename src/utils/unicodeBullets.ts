@@ -170,16 +170,9 @@ function rebuild(blocks: Block[], types: BulletListTypes, joinLists: boolean): B
       block.node.type === types.bulletList;
 
     if (bothLists && (previous.kind === "bullet" || block.kind === "bullet")) {
-      // Milkdown keeps a parsed list's `spread` as the string "false", which
-      // the markdown writer only reads as tight when it is a real boolean -
-      // carried over as is, the joined list would save with blank lines
-      // between its items.
-      const spread =
-        previous.node.attrs.spread === true || previous.node.attrs.spread === "true";
-
       joined[joined.length - 1] = {
         node: types.bulletList.create(
-          { ...previous.node.attrs, spread },
+          previous.node.attrs,
           previous.node.content.append(block.node.content),
         ),
         origin: previous.origin,
