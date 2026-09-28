@@ -620,6 +620,7 @@ function App() {
         "h3",
         "bullet-list",
         "ordered-list",
+        "convert-bullets",
         "blockquote",
         "code-block",
         "link",
