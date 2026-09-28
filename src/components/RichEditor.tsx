@@ -63,10 +63,11 @@ import {
   splitMarkdownLinks,
 } from "../utils/markdownLinks";
 import {
+  convertBulletParagraphs,
   convertPastedBullets,
   fitPastedListToListItem,
   type BulletListTypes,
-} from "../utils/pastedBullets";
+} from "../utils/unicodeBullets";
 import {
   backspaceMergesHeadingAsBodyText,
   backspaceOutdentsListItem,
@@ -135,6 +136,7 @@ export type FormatCommandId =
   | "h3"
   | "bullet-list"
   | "ordered-list"
+  | "convert-bullets"
   | "blockquote"
   | "code-block"
   | "link"
@@ -483,7 +485,7 @@ const markdownLinkPastePlugin = $prose((ctx) => {
 
 // Lines pasted with "•" (or "◦", "▪", "–" ...) bullets become a real bullet
 // list rather than paragraphs that start with the character - see
-// pastedBullets.ts. This runs after ProseMirror has parsed the clipboard, so
+// unicodeBullets.ts. This runs after ProseMirror has parsed the clipboard, so
 // it covers HTML from rich-text apps as well as plain text. Registered after
 // markdownLinkPastePlugin, which does the same conversion on its own slice.
 //
@@ -1056,6 +1058,19 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     setContextMenuPosition(null);
   };
 
+  // Existing documents keep their "• item" lines until this is run on them;
+  // pastes are converted as they come in (see unicodeBulletPastePlugin).
+  const runConvertBullets = () => {
+    const editor = get();
+    if (!editor) return;
+    editor.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      convertBulletParagraphs(bulletListTypes(ctx))(view.state, view.dispatch);
+      view.focus();
+    });
+    setContextMenuPosition(null);
+  };
+
   const runBlockquote = () => {
     const editor = get();
     if (!editor) return;
@@ -1113,6 +1128,9 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
       case "ordered-list":
         runOrderedList();
         break;
+      case "convert-bullets":
+        runConvertBullets();
+        break;
       case "blockquote":
         runBlockquote();
         break;
@@ -1132,7 +1150,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const menuWidth = 184;
-    const menuHeight = 456;
+    const menuHeight = 484;
 
     // Resolve the link from where the pointer actually is rather than from the
     // selection: whether a right-click moves the caret is up to the browser,
@@ -1261,6 +1279,9 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
           </button>
           <button type="button" role="menuitem" onClick={runOrderedList}>
             Numbered list
+          </button>
+          <button type="button" role="menuitem" onClick={runConvertBullets}>
+            Convert • lines to list
           </button>
           <button type="button" role="menuitem" onClick={runBlockquote}>
             Blockquote

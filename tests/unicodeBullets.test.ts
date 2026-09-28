@@ -3,12 +3,14 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Fragment, Slice } from "@milkdown/kit/prose/model";
 import type { Node as ProseNode } from "@milkdown/kit/prose/model";
-import { bulletList, doc, link, listItem, nodes, outline, p, stateFrom } from "./editorFixtures";
+import { bulletList, doc, link, listItem, nodes, outline, p, runCommand, stateFrom } from "./editorFixtures";
+import { AllSelection, TextSelection } from "@milkdown/kit/prose/state";
 import {
+  convertBulletParagraphs,
   convertPastedBullets,
   fitPastedListToListItem,
   unicodeBulletPrefixLength,
-} from "../src/utils/pastedBullets";
+} from "../src/utils/unicodeBullets";
 import { test } from "./testHarness";
 
 const types = {
@@ -237,4 +239,137 @@ test("the bullet paste plugin is registered after the link paste plugin", () => 
   const bulletAt = richEditor.indexOf(".use(unicodeBulletPastePlugin)");
 
   assert.equal(linkAt > -1 && bulletAt > linkAt, true);
+});
+
+// Documents that already had "• item" lines are only converted on request,
+// through the Format menu or the right-click menu.
+const convert = convertBulletParagraphs(types);
+
+test("the convert command turns a document's • lines into a list", () => {
+  const result = runCommand(
+    stateFrom(doc(p("Features:"), p("• Fast"), p("• Small"), p("Done."))),
+    convert,
+  );
+
+  assert.equal(result.handled, true);
+  assert.equal(
+    outline(result.doc),
+    'doc(paragraph("Features:"), bullet_list(list_item(paragraph("Fast")), list_item(paragraph("Small"))), paragraph("Done."))',
+  );
+});
+
+// The reported document: a real list, a gap saved as `<br />` lines (empty
+// paragraphs), then the "•" lines. One list comes out, with no gap.
+test("the convert command joins the • lines onto the real list above them", () => {
+  const result = runCommand(
+    stateFrom(
+      doc(
+        bulletList(listItem(p("Real one")), listItem(p("Real two"))),
+        p(),
+        p(),
+        p("• Unicode one"),
+        p("• Unicode two"),
+        p("After."),
+      ),
+    ),
+    convert,
+  );
+
+  assert.equal(
+    outline(result.doc),
+    'doc(bullet_list(list_item(paragraph("Real one")), list_item(paragraph("Real two")), list_item(paragraph("Unicode one")), list_item(paragraph("Unicode two"))), paragraph("After."))',
+  );
+});
+
+test("a single • line in a document is converted too", () => {
+  const result = runCommand(stateFrom(doc(p("Intro"), p("• Only one"))), convert);
+
+  assert.equal(
+    outline(result.doc),
+    'doc(paragraph("Intro"), bullet_list(list_item(paragraph("Only one"))))',
+  );
+});
+
+test("the convert command does nothing when there are no • lines", () => {
+  const state = stateFrom(doc(bulletList(listItem(p("Real"))), p(), p("Text")));
+  const result = runCommand(state, convert);
+
+  assert.equal(result.handled, false);
+  assert.equal(result.doc, state.doc);
+});
+
+test("blank lines and lists away from the • lines are left alone", () => {
+  const result = runCommand(
+    stateFrom(
+      doc(
+        bulletList(listItem(p("Separate list"))),
+        p(),
+        p("Paragraph between"),
+        p("• One"),
+      ),
+    ),
+    convert,
+  );
+
+  assert.equal(
+    outline(result.doc),
+    'doc(bullet_list(list_item(paragraph("Separate list"))), paragraph, paragraph("Paragraph between"), bullet_list(list_item(paragraph("One"))))',
+  );
+});
+
+test("with a selection, only the blocks it touches are converted", () => {
+  const state = stateFrom(doc(p("• Keep one"), p("Middle"), p("• Change one"), p("• Change two")));
+  const second = state.doc.child(0).nodeSize + state.doc.child(1).nodeSize;
+  const selected = state.apply(
+    state.tr.setSelection(
+      TextSelection.create(state.doc, second + 3, state.doc.content.size - 2),
+    ),
+  );
+
+  assert.equal(
+    outline(runCommand(selected, convert).doc),
+    'doc(paragraph("• Keep one"), paragraph("Middle"), bullet_list(list_item(paragraph("Change one")), list_item(paragraph("Change two"))))',
+  );
+});
+
+test("select all converts the whole document", () => {
+  const state = stateFrom(doc(p("• One"), p("Middle"), p("• Two")));
+  const all = state.apply(state.tr.setSelection(new AllSelection(state.doc)));
+
+  assert.equal(
+    outline(runCommand(all, convert).doc),
+    'doc(bullet_list(list_item(paragraph("One"))), paragraph("Middle"), bullet_list(list_item(paragraph("Two"))))',
+  );
+});
+
+test("the caret stays in an untouched paragraph after converting", () => {
+  const state = stateFrom(doc(p("• One"), p("Mid<|>dle"), p("• Two")));
+  const result = runCommand(state, convert);
+  const { $from } = result.state.selection;
+
+  assert.equal($from.parent.textContent, "Middle");
+  assert.equal($from.parentOffset, 3);
+});
+
+// The command is reached from the native macOS Format menu by item id, and
+// the ids are kept in sync by hand across the Rust/TS boundary. An id missing
+// from either side makes the menu item silently do nothing.
+test("every format command id is a Format menu item and is forwarded by App", () => {
+  const read = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
+  const richEditor = read("src/components/RichEditor.tsx");
+  const app = read("src/App.tsx");
+  const menu = read("src-tauri/src/lib.rs");
+
+  const union = /export type FormatCommandId =([^;]+);/.exec(richEditor)?.[1] ?? "";
+  const ids = Array.from(union.matchAll(/"([a-z0-9-]+)"/g)).map((match) => match[1]!);
+
+  assert.equal(ids.includes("convert-bullets"), true);
+
+  const missing = ids.filter(
+    (id) =>
+      !new RegExp(`with_id\\(\\s*app,\\s*"${id}"`).test(menu) ||
+      !app.includes(`"${id}",`),
+  );
+
+  assert.deepEqual(missing, []);
 });

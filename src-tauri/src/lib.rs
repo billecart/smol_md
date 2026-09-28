@@ -644,6 +644,13 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         MenuItem::with_id(app, "bullet-list", "Bullet List", true, None::<&str>)?;
     let ordered_list_item =
         MenuItem::with_id(app, "ordered-list", "Numbered List", true, None::<&str>)?;
+    let convert_bullets_item = MenuItem::with_id(
+        app,
+        "convert-bullets",
+        "Convert • Lines to List",
+        true,
+        None::<&str>,
+    )?;
     let blockquote_item = MenuItem::with_id(app, "blockquote", "Blockquote", true, None::<&str>)?;
     let code_block_item = MenuItem::with_id(app, "code-block", "Code Block", true, None::<&str>)?;
     let link_item = MenuItem::with_id(app, "link", "Link", true, Some("CmdOrCtrl+K"))?;
@@ -664,6 +671,7 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &PredefinedMenuItem::separator(app)?,
             &bullet_list_item,
             &ordered_list_item,
+            &convert_bullets_item,
             &blockquote_item,
             &code_block_item,
             &PredefinedMenuItem::separator(app)?,
