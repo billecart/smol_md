@@ -56,6 +56,7 @@ import {
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { SKIP, visit } from "unist-util-visit";
 import { normalizeMarkdownLineBreaks } from "../utils/markdown";
+import { detectBulletMarker, listStringifyHandlers } from "../utils/markdownLists";
 import { openExternalUrl } from "../services/fileService";
 import {
   MARKDOWN_LINK_INPUT,
@@ -638,6 +639,9 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
   ) {
   const lastKnownMarkdown = useRef(value);
   const isSyncingFromApp = useRef(false);
+  // The bullet marker saves use, read from markdown the app hands in. The
+  // editor's own output already uses it, so it is never read back from there.
+  const bulletMarker = useRef(detectBulletMarker(value));
   const [contextMenuLink, setContextMenuLink] = useState<LinkRange | null>(null);
   const [contextMenuPosition, setContextMenuPosition] =
     useState<ContextMenuPosition | null>(null);
@@ -695,12 +699,14 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
               onChange(normalizedMarkdown);
             }
           });
-          // Register ==text== serializer for the highlight MDAST node type.
+          // Register ==text== serializer for the highlight MDAST node type,
+          // and list handlers that keep tight lists tight (see markdownLists.ts).
           const stringifyOpts = ctx.get(remarkStringifyOptionsCtx);
           ctx.set(remarkStringifyOptionsCtx, {
             ...stringifyOpts,
             handlers: {
               ...(stringifyOpts as any).handlers,
+              ...listStringifyHandlers(() => bulletMarker.current),
               highlight: (node: any, _parent: any, state: any, info: any) => {
                 const exit = state.enter("highlight");
                 const value = state.containerPhrasing(node, {
@@ -743,6 +749,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     }
 
     isSyncingFromApp.current = true;
+    bulletMarker.current = detectBulletMarker(value);
     editor.action(replaceAll(value, true));
     lastKnownMarkdown.current = value;
     window.queueMicrotask(() => {
