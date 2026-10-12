@@ -285,10 +285,10 @@ Current light theme tokens:
 
 ```css
 :root {
-  --background-primary: #f3f3f2;
-  --background-secondary: #ececea;
+  --background-primary: #f1f2f3;
+  --background-secondary: #eaebeb;
   --text-normal: #16160e;
-  --editor-text: rgba(22, 22, 14, 0.88);
+  --editor-text: var(--text-normal);
   --text-muted: rgba(22, 22, 14, 0.55);
   --text-faint: rgba(22, 22, 14, 0.34);
   --color-accent: #004225;
@@ -300,7 +300,7 @@ Current light theme tokens:
   --font-ui: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
   --font-editor: "IBM Plex Mono", "Cascadia Mono", "Cascadia Code", "Roboto Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   --editor-line-height: 1.75;
-  --editor-font-size: 16px;
+  --editor-font-size: 17px;
   --editor-column-width: min(740px, calc(100vw - 80px));
   --toolbar-peek-height: 14px;
 }

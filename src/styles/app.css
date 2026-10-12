@@ -1,9 +1,10 @@
 :root {
-  --background-primary: #f3f3f2;
-  --background-secondary: #ececea;
-  --background-tertiary: #e5e5e2;
+  --background-primary: #f1f2f3;
+  --background-rgb: 241, 242, 243;
+  --background-secondary: #eaebeb;
+  --background-tertiary: #e3e4e3;
   --text-normal: #16160e;
-  --editor-text: rgba(22, 22, 14, 0.88);
+  --editor-text: var(--text-normal);
   --text-muted: rgba(22, 22, 14, 0.55);
   --text-faint: rgba(22, 22, 14, 0.34);
   --color-accent: #004225;
@@ -20,7 +21,7 @@
      Switched by the mono/sans/serif toggle in the status bar. */
   --font-document: var(--font-editor);
   --editor-line-height: 1.75;
-  --editor-font-size: 16px;
+  --editor-font-size: 17px;
   --editor-column-width: min(660px, calc(100% - 80px));
   --toolbar-peek-height: 14px;
 
@@ -90,7 +91,7 @@ input:focus-visible {
   right: 0;
   left: 0;
   height: var(--toolbar-peek-height);
-  background: rgba(243, 243, 242, 0.001);
+  background: rgba(var(--background-rgb), 0.001);
 }
 
 .top-chrome {
@@ -117,7 +118,7 @@ input:focus-visible {
   align-items: center;
   min-height: 32px;
   padding: 0 0 0 18px;
-  background: rgba(243, 243, 242, 0.92);
+  background: rgba(var(--background-rgb), 0.92);
   color: var(--text-muted);
   backdrop-filter: blur(18px);
 }
@@ -195,7 +196,7 @@ input:focus-visible {
   min-height: 48px;
   padding: 8px 18px;
   border-bottom: 1px solid transparent;
-  background: rgba(243, 243, 242, 0.88);
+  background: rgba(var(--background-rgb), 0.88);
   color: var(--text-muted);
   opacity: 0;
   transform: translateY(-8px);
@@ -539,6 +540,9 @@ input:focus-visible {
   font-weight: 400;
   line-height: var(--editor-line-height);
   letter-spacing: 0;
+  /* :root's antialiased smoothing thins strokes on macOS; the document text
+     gets the default, sturdier rendering while chrome stays light. */
+  -webkit-font-smoothing: auto;
 }
 
 .source-editor::placeholder {
@@ -669,7 +673,7 @@ input:focus-visible {
   padding: 2px 3px 2px 6px;
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  background: rgba(243, 243, 242, 0.97);
+  background: rgba(var(--background-rgb), 0.97);
   box-shadow: 0 2px 12px rgba(22, 22, 14, 0.1);
   backdrop-filter: blur(18px);
 }
@@ -734,6 +738,7 @@ input:focus-visible {
   font-weight: 400;
   line-height: var(--editor-line-height);
   letter-spacing: 0;
+  -webkit-font-smoothing: auto;
 }
 
 .rich-editor .ProseMirror > *:first-child {
@@ -1010,7 +1015,7 @@ input:focus-visible {
   min-height: 34px;
   padding: 7px 16px;
   border-top: 1px solid transparent;
-  background: rgba(243, 243, 242, 0.88);
+  background: rgba(var(--background-rgb), 0.88);
   color: var(--text-faint);
   font-family: var(--font-editor);
   font-size: 12px;
@@ -1300,7 +1305,7 @@ input:focus-visible {
   padding: 10px 12px 10px 16px;
   border: 1px solid var(--border-subtle);
   border-radius: 8px;
-  background: rgba(243, 243, 242, 0.97);
+  background: rgba(var(--background-rgb), 0.97);
   backdrop-filter: blur(18px);
   box-shadow: 0 1px 2px rgba(22, 22, 14, 0.08), 0 12px 32px rgba(22, 22, 14, 0.13);
   /* The entry animation deliberately does not touch opacity. A CSS animation
