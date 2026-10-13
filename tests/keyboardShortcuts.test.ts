@@ -97,3 +97,25 @@ test("Ctrl+W closes tab on non-Mac", () => {
     "closeTab",
   );
 });
+
+test("ctrl+tab cycles tabs forward and ctrl+shift+tab backward", () => {
+  const base = { code: "Tab", ctrlKey: true, metaKey: false };
+  assert.equal(getShortcutAction({ ...base, shiftKey: false }), "nextTab");
+  assert.equal(getShortcutAction({ ...base, shiftKey: true }), "previousTab");
+});
+
+test("cmd+shift+brackets cycle tabs, plain cmd+brackets do not", () => {
+  const base = { ctrlKey: false, metaKey: true };
+  assert.equal(
+    getShortcutAction({ ...base, code: "BracketRight", shiftKey: true }),
+    "nextTab",
+  );
+  assert.equal(
+    getShortcutAction({ ...base, code: "BracketLeft", shiftKey: true }),
+    "previousTab",
+  );
+  assert.equal(
+    getShortcutAction({ ...base, code: "BracketRight", shiftKey: false }),
+    null,
+  );
+});

@@ -708,11 +708,31 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     // Deliberately no Close Window item: Cmd+W has to reach the webview so the
     // app can close a tab, and only close the window on the last one. A native
     // menu accelerator would swallow the key before JavaScript ever saw it.
+    // Cmd+Shift+] / [ is the macOS tab-cycling convention. Ctrl+Tab also
+    // works, but that one is handled in the webview (useKeyboardShortcuts).
+    let next_tab_item = MenuItem::with_id(
+        app,
+        "next-tab",
+        "Show Next Tab",
+        true,
+        Some("CmdOrCtrl+Shift+]"),
+    )?;
+    let previous_tab_item = MenuItem::with_id(
+        app,
+        "previous-tab",
+        "Show Previous Tab",
+        true,
+        Some("CmdOrCtrl+Shift+["),
+    )?;
+
     let window_menu = Submenu::with_items(
         app,
         "Window",
         true,
         &[
+            &next_tab_item,
+            &previous_tab_item,
+            &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::minimize(app, None)?,
             &PredefinedMenuItem::maximize(app, None)?,
             &PredefinedMenuItem::separator(app)?,
