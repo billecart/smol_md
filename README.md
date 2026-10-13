@@ -75,6 +75,8 @@ macOS gets the native titlebar with traffic lights and a hidden title. Windows g
 | `Cmd/Ctrl+` ` ` ` | Toggle Source / Rich mode |
 | `Cmd/Ctrl+W` | Close tab, or the window if it's the last one |
 | `Cmd/Ctrl+Shift+W` | Close window |
+| `Ctrl+Tab` / `Cmd/Ctrl+Shift+]` | Next tab |
+| `Ctrl+Shift+Tab` / `Cmd/Ctrl+Shift+[` | Previous tab |
 | `Cmd/Ctrl+F` | Find |
 | `Cmd/Ctrl+B` | Bold |
 | `Cmd/Ctrl+I` | Italic |
@@ -95,7 +97,7 @@ npm install
 
 ```
 src-tauri/target/release/bundle/macos/smol_md.app
-src-tauri/target/release/bundle/dmg/smol_md_1.1.6_aarch64.dmg
+src-tauri/target/release/bundle/dmg/smol_md_1.1.7_aarch64.dmg
 ```
 
 On Windows, `.\scripts\build-windows.ps1` builds and copies the artifacts into `release/`.

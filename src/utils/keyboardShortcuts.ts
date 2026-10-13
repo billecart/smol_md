@@ -9,7 +9,9 @@ export type ShortcutAction =
   | "find"
   | "zoomIn"
   | "zoomOut"
-  | "zoomReset";
+  | "zoomReset"
+  | "nextTab"
+  | "previousTab";
 
 type ShortcutEvent = Pick<
   KeyboardEvent,
@@ -21,7 +23,17 @@ export function getShortcutAction(event: ShortcutEvent): ShortcutAction | null {
     return null;
   }
 
+  // Ctrl+Tab is the browser/Windows convention; Cmd+Shift+] / [ is the
+  // macOS one (Safari, Finder, Terminal). Both cycle through open tabs.
+  if (event.code === "Tab" && event.ctrlKey) {
+    return event.shiftKey ? "previousTab" : "nextTab";
+  }
+
   switch (event.code) {
+    case "BracketRight":
+      return event.shiftKey ? "nextTab" : null;
+    case "BracketLeft":
+      return event.shiftKey ? "previousTab" : null;
     case "KeyN":
       return "new";
     case "KeyO":

@@ -13,6 +13,8 @@ type KeyboardShortcuts = {
   onZoomIn?: () => void;
   onZoomOut?: () => void;
   onZoomReset?: () => void;
+  onNextTab?: () => void;
+  onPreviousTab?: () => void;
 };
 
 export function useKeyboardShortcuts({
@@ -27,6 +29,8 @@ export function useKeyboardShortcuts({
   onZoomIn,
   onZoomOut,
   onZoomReset,
+  onNextTab,
+  onPreviousTab,
 }: KeyboardShortcuts) {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -60,6 +64,10 @@ export function useKeyboardShortcuts({
         onZoomOut?.();
       } else if (action === "zoomReset") {
         onZoomReset?.();
+      } else if (action === "nextTab") {
+        onNextTab?.();
+      } else if (action === "previousTab") {
+        onPreviousTab?.();
       }
     };
 
@@ -77,5 +85,7 @@ export function useKeyboardShortcuts({
     onZoomIn,
     onZoomOut,
     onZoomReset,
+    onNextTab,
+    onPreviousTab,
   ]);
 }

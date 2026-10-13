@@ -607,6 +607,33 @@ function App() {
     setZoomLevel(1);
   }, []);
 
+  // Wraps around at both ends, like browser tabs.
+  const selectAdjacentDocument = useCallback(
+    (offset: number) => {
+      if (documents.length < 2) {
+        return;
+      }
+
+      const currentIndex = documents.findIndex(
+        (document) => document.id === activeDocumentId,
+      );
+      const nextIndex =
+        (currentIndex + offset + documents.length) % documents.length;
+      setActiveDocumentId(documents[nextIndex]!.id);
+    },
+    [documents, activeDocumentId, setActiveDocumentId],
+  );
+
+  const handleNextTab = useCallback(
+    () => selectAdjacentDocument(1),
+    [selectAdjacentDocument],
+  );
+
+  const handlePreviousTab = useCallback(
+    () => selectAdjacentDocument(-1),
+    [selectAdjacentDocument],
+  );
+
   // The ids RichEditor's context menu (and now the native Format menu) both
   // dispatch through - see FormatCommandId in RichEditor.tsx.
   const formatCommandIds = useMemo(
@@ -649,6 +676,8 @@ function App() {
     handleZoomIn,
     handleZoomOut,
     handleZoomReset,
+    handleNextTab,
+    handlePreviousTab,
     recentDocuments,
   });
 
@@ -667,6 +696,8 @@ function App() {
       handleZoomIn,
       handleZoomOut,
       handleZoomReset,
+      handleNextTab,
+      handlePreviousTab,
       recentDocuments,
     };
   });
@@ -749,6 +780,12 @@ function App() {
         case "zoom-reset":
           handlers.handleZoomReset();
           break;
+        case "next-tab":
+          handlers.handleNextTab();
+          break;
+        case "previous-tab":
+          handlers.handlePreviousTab();
+          break;
         default:
           break;
       }
@@ -798,6 +835,8 @@ function App() {
     onZoomIn: handleZoomIn,
     onZoomOut: handleZoomOut,
     onZoomReset: handleZoomReset,
+    onNextTab: handleNextTab,
+    onPreviousTab: handlePreviousTab,
   });
 
   return (
