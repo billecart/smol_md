@@ -22,6 +22,7 @@ import {
   commonmark,
   hardbreakSchema,
   headingSchema,
+  inlineCodeSchema,
   linkSchema,
   paragraphSchema,
   orderedListSchema,
@@ -907,13 +908,16 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
 
             deliverMarkdown(markdown);
           });
-          // Links stop at their last letter. Milkdown leaves the link mark
-          // inclusive (ProseMirror's default), so a space or full stop typed
-          // right after a link joined it and there was no way to type out of it.
-          ctx.update(linkSchema.key, (prev) => (innerCtx) => ({
-            ...prev(innerCtx),
-            inclusive: false,
-          }));
+          // Links and inline code stop at their last letter. Milkdown leaves
+          // both marks inclusive (ProseMirror's default), so a space or full
+          // stop typed right after one joined it and there was no way to type
+          // out of it.
+          for (const markSchema of [linkSchema, inlineCodeSchema]) {
+            ctx.update(markSchema.key, (prev) => (innerCtx) => ({
+              ...prev(innerCtx),
+              inclusive: false,
+            }));
+          }
           // Register ==text== serializer for the highlight MDAST node type,
           // and list handlers that keep tight lists tight (see markdownLists.ts).
           const stringifyOpts = ctx.get(remarkStringifyOptionsCtx);
