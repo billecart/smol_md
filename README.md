@@ -97,7 +97,7 @@ npm install
 
 ```
 src-tauri/target/release/bundle/macos/smol_md.app
-src-tauri/target/release/bundle/dmg/smol_md_1.1.7_aarch64.dmg
+src-tauri/target/release/bundle/dmg/smol_md_1.1.8_aarch64.dmg
 ```
 
 On Windows, `.\scripts\build-windows.ps1` builds and copies the artifacts into `release/`.

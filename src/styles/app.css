@@ -588,6 +588,26 @@ input:focus-visible {
   background: var(--border-subtle);
 }
 
+.link-preview {
+  position: fixed;
+  z-index: 34;
+  max-width: 360px;
+  overflow: hidden;
+  padding: 5px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: rgba(236, 236, 234, 0.97);
+  box-shadow: 0 8px 24px rgba(22, 22, 14, 0.12);
+  backdrop-filter: blur(18px);
+  color: var(--text-muted);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
 .link-dialog {
   position: fixed;
   z-index: 35;
