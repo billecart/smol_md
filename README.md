@@ -1,10 +1,8 @@
 # smol_md
 
-A smol markdown editor for macOS and Windows. It's for those who, like me, like the minimalism of iA Writer and hate the markdown clutter.
+A smol markdown editor for macOS and Windows I vibecoded for myself. It's for those who, like me, like the minimalism of iA Writer and hate the markdown clutter.
 
 ![Rich mode](docs/screenshots/rich.png)
-
-You write in Rich mode and get a clean `.md` file on disk. Want the clutter back? Source mode is one click away, same file.
 
 ![Source mode](docs/screenshots/source.png)
 
