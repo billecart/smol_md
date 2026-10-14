@@ -1,4 +1,5 @@
 import {
+  useCallback,
   forwardRef,
   useEffect,
   useImperativeHandle,
@@ -35,6 +36,10 @@ import {
 } from "@milkdown/kit/preset/commonmark";
 import { gfm, toggleStrikethroughCommand } from "@milkdown/kit/preset/gfm";
 import type { Ctx } from "@milkdown/ctx";
+import {
+  getLinkPreviewPosition,
+  LINK_PREVIEW_DELAY_MS,
+} from "../utils/linkPreview";
 import { lift, setBlockType, toggleMark, wrapIn } from "@milkdown/kit/prose/commands";
 import { markRule } from "@milkdown/kit/prose";
 import { InputRule } from "@milkdown/kit/prose/inputrules";
@@ -857,6 +862,67 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
   const [linkDialogPos, setLinkDialogPos] = useState<LinkDialogCoords | null>(null);
   const linkInputRef = useRef<HTMLInputElement>(null);
 
+  // Hovering a link shows where it goes, after a short pause so the bubble
+  // doesn't flicker while the pointer just passes over text.
+  const [linkPreview, setLinkPreview] = useState<{
+    href: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const linkPreviewTimer = useRef<number | undefined>(undefined);
+  const hoveredLinkRef = useRef<HTMLAnchorElement | null>(null);
+
+  const hideLinkPreview = useCallback(() => {
+    window.clearTimeout(linkPreviewTimer.current);
+    hoveredLinkRef.current = null;
+    setLinkPreview(null);
+  }, []);
+
+  const handleEditorMouseOver = useCallback(
+    (event: MouseEvent) => {
+      const anchor = (event.target as HTMLElement | null)?.closest?.(
+        ".ProseMirror a[href]",
+      ) as HTMLAnchorElement | null;
+
+      if (anchor === hoveredLinkRef.current) return;
+
+      hideLinkPreview();
+      if (!anchor) return;
+
+      hoveredLinkRef.current = anchor;
+      linkPreviewTimer.current = window.setTimeout(() => {
+        const href = anchor.getAttribute("href");
+        if (!href || !anchor.isConnected) return;
+        // getClientRects: a link that wraps onto two lines gets the bubble
+        // under its first line, not under the whole block.
+        const rect = anchor.getClientRects()[0] ?? anchor.getBoundingClientRect();
+        setLinkPreview({
+          href,
+          ...getLinkPreviewPosition(rect, {
+            width: window.innerWidth,
+            height: window.innerHeight,
+          }),
+        });
+      }, LINK_PREVIEW_DELAY_MS);
+    },
+    [hideLinkPreview],
+  );
+
+  useEffect(() => {
+    if (!linkPreview) return;
+    // Anything that moves the text or starts an action makes the bubble stale.
+    window.addEventListener("scroll", hideLinkPreview, true);
+    window.addEventListener("keydown", hideLinkPreview, true);
+    window.addEventListener("mousedown", hideLinkPreview, true);
+    return () => {
+      window.removeEventListener("scroll", hideLinkPreview, true);
+      window.removeEventListener("keydown", hideLinkPreview, true);
+      window.removeEventListener("mousedown", hideLinkPreview, true);
+    };
+  }, [linkPreview, hideLinkPreview]);
+
+  useEffect(() => () => window.clearTimeout(linkPreviewTimer.current), []);
+
   const tocEntries = useTableOfContents(value);
 
   const handleNavigateToc = (entry: TocEntry) => {
@@ -1373,7 +1439,12 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
   };
 
   return (
-    <div className="rich-editor-shell" onContextMenu={openContextMenu}>
+    <div
+      className="rich-editor-shell"
+      onContextMenu={openContextMenu}
+      onMouseOver={handleEditorMouseOver}
+      onMouseLeave={hideLinkPreview}
+    >
       <div className="rich-editor" aria-label="Rich Markdown editor">
         {loading ? <p className="editor-loading">Loading editor...</p> : null}
         <Milkdown />
@@ -1508,6 +1579,15 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
               Link
             </button>
           )}
+        </div>
+      ) : null}
+      {linkPreview && !contextMenuPosition && !linkDialogPos ? (
+        <div
+          className="link-preview"
+          role="tooltip"
+          style={{ left: linkPreview.x, top: linkPreview.y }}
+        >
+          {linkPreview.href}
         </div>
       ) : null}
       {linkDialogPos ? (
