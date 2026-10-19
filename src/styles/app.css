@@ -112,7 +112,12 @@ input:focus-visible {
 }
 
 .app-bar {
+  /* Above the tab bar: the file menu drops out of this bar over the tabs,
+     and both bars are stacking contexts (backdrop-filter, transform), so
+     the menu's own z-index cannot lift it past the later tab bar. macOS
+     hides the tab bar while the menu is open; Windows shows both. */
   position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
