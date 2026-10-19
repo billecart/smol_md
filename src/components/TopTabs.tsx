@@ -19,13 +19,42 @@ const DRAG_THRESHOLD_PX = 4;
 // Dragging past either edge of an overflowing strip scrolls it, so a tab can
 // be carried to a spot that is currently out of sight.
 const EDGE_SCROLL_PX = 12;
+// Neighbours slide into their new slots, and a dropped tab glides into its
+// own, over this long.
+const SLIDE_MS = 150;
 
 type PendingDrag = {
   documentId: string;
   pointerId: number;
   startX: number;
   isDragging: boolean;
+  // Where in the tab the pointer grabbed it, so the tab keeps that spot
+  // under the cursor instead of snapping its left edge to it.
+  grabOffset: number;
+  lastClientX: number;
 };
+
+function prefersReducedMotion() {
+  return (
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  );
+}
+
+function findTab(strip: HTMLElement, documentId: string) {
+  return Array.from(strip.querySelectorAll<HTMLElement>(".tab")).find(
+    (tab) => tab.dataset.documentId === documentId,
+  );
+}
+
+// The pointer's x in the strip's own content coordinates - the same space
+// as a tab's offsetLeft (the strip is their offset parent), which ignores
+// both scrolling and the transforms used to animate tabs.
+function pointerInStrip(strip: HTMLElement, clientX: number) {
+  return (
+    clientX - strip.getBoundingClientRect().left - strip.clientLeft + strip.scrollLeft
+  );
+}
 
 function TopTabsComponent({
   documents,
@@ -39,6 +68,69 @@ function TopTabsComponent({
   const [overflow, setOverflow] = useState<OverflowEdge>("none");
   const dragRef = useRef<PendingDrag | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  // Layout positions of the tabs just before a drag reorders them, read
+  // back after the re-render to slide each one from its old slot.
+  const slideFromRef = useRef<Map<string, number> | null>(null);
+
+  // Keeps the carried tab under the pointer. Its layout slot changes as it
+  // passes neighbours, so the offset is recomputed from wherever that slot
+  // is now, clamped so the tab never leaves the strip.
+  const positionDraggedTab = useCallback(() => {
+    const drag = dragRef.current;
+    const strip = stripRef.current;
+
+    if (!drag?.isDragging || !strip) {
+      return;
+    }
+
+    const tab = findTab(strip, drag.documentId);
+
+    if (!tab) {
+      return;
+    }
+
+    const wanted = pointerInStrip(strip, drag.lastClientX) - drag.grabOffset;
+    const clamped = Math.max(
+      0,
+      Math.min(wanted, strip.scrollWidth - tab.offsetWidth),
+    );
+
+    tab.style.transform = `translateX(${clamped - tab.offsetLeft}px)`;
+  }, []);
+
+  useLayoutEffect(() => {
+    const strip = stripRef.current;
+    const slideFrom = slideFromRef.current;
+    slideFromRef.current = null;
+
+    if (!strip || !slideFrom) {
+      return;
+    }
+
+    positionDraggedTab();
+
+    if (prefersReducedMotion()) {
+      return;
+    }
+
+    strip.querySelectorAll<HTMLElement>(".tab").forEach((tab) => {
+      const id = tab.dataset.documentId;
+      const from = id === undefined ? undefined : slideFrom.get(id);
+
+      if (id === dragRef.current?.documentId || from === undefined) {
+        return;
+      }
+
+      const dx = from - tab.offsetLeft;
+
+      if (dx !== 0) {
+        tab.animate(
+          [{ transform: `translateX(${dx}px)` }, { transform: "none" }],
+          { duration: SLIDE_MS, easing: "ease-out" },
+        );
+      }
+    });
+  }, [documents, positionDraggedTab]);
 
   // The strip hides its scrollbar by design, so which edge is faded is the
   // only cue that there are more tabs than fit.
@@ -115,7 +207,8 @@ function TopTabsComponent({
     const strip = stripRef.current;
     const activeTab = strip?.querySelector<HTMLElement>(".tab.active");
 
-    if (!strip || !activeTab) {
+    // Mid-drag the pointer, not this, decides where the strip scrolls.
+    if (!strip || !activeTab || dragRef.current?.isDragging) {
       return;
     }
 
@@ -153,11 +246,19 @@ function TopTabsComponent({
       return;
     }
 
+    const strip = stripRef.current;
+
+    if (!strip) {
+      return;
+    }
+
     dragRef.current = {
       documentId: tab.dataset.documentId,
       pointerId: event.pointerId,
       startX: event.clientX,
       isDragging: false,
+      grabOffset: pointerInStrip(strip, event.clientX) - tab.offsetLeft,
+      lastClientX: event.clientX,
     };
   };
 
@@ -178,10 +279,20 @@ function TopTabsComponent({
       // React re-inserts the tab's node as it reorders, and a node that
       // leaves the document loses its capture.
       drag.isDragging = true;
-      strip.setPointerCapture(event.pointerId);
+
+      // Throws if the pointer is already gone; the drag still works
+      // without capture as long as the cursor stays over the strip.
+      try {
+        strip.setPointerCapture(event.pointerId);
+      } catch {
+        // Nothing to do.
+      }
+
       setDraggingId(drag.documentId);
       onSelectDocument(drag.documentId);
     }
+
+    drag.lastClientX = event.clientX;
 
     const stripBox = strip.getBoundingClientRect();
 
@@ -191,23 +302,39 @@ function TopTabsComponent({
       strip.scrollLeft += EDGE_SCROLL_PX;
     }
 
+    positionDraggedTab();
+
     // The dragged tab's new index is how many of the other tabs have their
-    // centre left of the pointer. Leaving the dragged tab out keeps this
-    // stable when neighbouring tabs differ in width.
+    // centre left of the dragged tab's centre. Layout positions (offsetLeft)
+    // rather than on-screen boxes, so neighbours that are still sliding do
+    // not make the order flicker.
+    const tabs = Array.from(strip.querySelectorAll<HTMLElement>(".tab"));
+    const dragged = tabs.find((tab) => tab.dataset.documentId === drag.documentId);
+
+    if (!dragged) {
+      return;
+    }
+
+    const draggedCentre =
+      pointerInStrip(strip, event.clientX) - drag.grabOffset + dragged.offsetWidth / 2;
     let toIndex = 0;
 
-    strip.querySelectorAll<HTMLElement>(".tab").forEach((tab) => {
-      if (tab.dataset.documentId === drag.documentId) {
-        return;
-      }
-
-      const box = tab.getBoundingClientRect();
-
-      if (box.left + box.width / 2 < event.clientX) {
+    for (const tab of tabs) {
+      if (
+        tab !== dragged &&
+        tab.offsetLeft + tab.offsetWidth / 2 < draggedCentre
+      ) {
         toIndex += 1;
       }
-    });
+    }
 
+    if (tabs.indexOf(dragged) === toIndex) {
+      return;
+    }
+
+    slideFromRef.current = new Map(
+      tabs.map((tab) => [tab.dataset.documentId ?? "", tab.offsetLeft]),
+    );
     onReorderDocument(drag.documentId, toIndex);
   };
 
@@ -220,9 +347,31 @@ function TopTabsComponent({
 
     dragRef.current = null;
 
-    if (drag.isDragging) {
-      stripRef.current?.releasePointerCapture?.(event.pointerId);
-      setDraggingId(null);
+    if (!drag.isDragging) {
+      return;
+    }
+
+    const strip = stripRef.current;
+    if (strip?.hasPointerCapture?.(event.pointerId)) {
+      strip.releasePointerCapture(event.pointerId);
+    }
+    setDraggingId(null);
+
+    // Glide from wherever it was let go into its slot, rather than jumping.
+    const tab = strip ? findTab(strip, drag.documentId) : undefined;
+
+    if (!tab) {
+      return;
+    }
+
+    const heldAt = tab.style.transform;
+    tab.style.transform = "";
+
+    if (heldAt && !prefersReducedMotion()) {
+      tab.animate([{ transform: heldAt }, { transform: "none" }], {
+        duration: SLIDE_MS,
+        easing: "ease-out",
+      });
     }
   };
 
