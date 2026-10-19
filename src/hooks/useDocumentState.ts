@@ -4,6 +4,7 @@ import {
   addLoadedDocuments,
   createDocument,
   markDocumentSaved,
+  moveDocument,
   setDocumentMarkdown,
   type OpenDocument,
 } from "../utils/documentModel";
@@ -121,6 +122,17 @@ export function useDocumentState() {
     [loadDocuments],
   );
 
+  // Functional updater for the same reason as setMarkdown: a drag can run
+  // right after the rich editor flushed an edit that has not rendered yet.
+  const reorderDocument = useCallback(
+    (documentId: string, toIndex: number) => {
+      setDocuments((currentDocuments) =>
+        moveDocument(currentDocuments, documentId, toIndex),
+      );
+    },
+    [],
+  );
+
   // NOTE: closeDocument is intentionally left as a plain closure (recreated
   // on every render): it reads the current `documents` to find the fallback
   // "next active" document before it knows which id becomes active.
@@ -166,6 +178,7 @@ export function useDocumentState() {
       markSaved,
       createNewDocument,
       closeDocument,
+      reorderDocument,
       resetWorkspace,
     };
   }, [
@@ -176,6 +189,7 @@ export function useDocumentState() {
     loadDocuments,
     markSaved,
     createNewDocument,
+    reorderDocument,
     resetWorkspace,
   ]);
 }

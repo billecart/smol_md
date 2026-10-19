@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { getShortcutAction } from "../utils/keyboardShortcuts";
+import { isMacOs } from "../utils/platform";
 
 type KeyboardShortcuts = {
   onNew: () => void;
@@ -33,8 +34,10 @@ export function useKeyboardShortcuts({
   onPreviousTab,
 }: KeyboardShortcuts) {
   useEffect(() => {
+    const isMac = isMacOs();
+
     const handleKeyDown = (event: KeyboardEvent) => {
-      const action = getShortcutAction(event);
+      const action = getShortcutAction(event, isMac);
 
       if (!action) {
         return;

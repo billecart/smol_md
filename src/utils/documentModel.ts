@@ -166,3 +166,23 @@ function createDocumentId() {
 
   return `doc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
+
+// Moves one tab to `toIndex` (its position after the move). Returns the same
+// array when nothing changes, so a drag that hovers in place re-renders nothing.
+export function moveDocument<T extends { id: string }>(
+  documents: T[],
+  documentId: string,
+  toIndex: number,
+) {
+  const fromIndex = documents.findIndex((document) => document.id === documentId);
+  const clampedIndex = Math.max(0, Math.min(toIndex, documents.length - 1));
+
+  if (fromIndex === -1 || fromIndex === clampedIndex) {
+    return documents;
+  }
+
+  const next = documents.slice();
+  const [moved] = next.splice(fromIndex, 1);
+  next.splice(clampedIndex, 0, moved!);
+  return next;
+}

@@ -412,6 +412,26 @@ input:focus-visible {
   color: var(--text-normal);
 }
 
+/* While a tab is carried, hover highlights on the tabs it passes over would
+   read as drop targets; only the carried one stays lifted. */
+.top-tabs.dragging {
+  cursor: grabbing;
+}
+
+.top-tabs.dragging .tab:not(.dragged) {
+  background: transparent;
+}
+
+.top-tabs.dragging .tab.dragged {
+  background: rgba(22, 22, 14, 0.09);
+  color: var(--text-normal);
+}
+
+.top-tabs.dragging .tab-label,
+.top-tabs.dragging .tab-close {
+  cursor: grabbing;
+}
+
 .tab-label {
   display: inline-flex;
   flex: 1 1 auto;

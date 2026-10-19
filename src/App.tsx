@@ -63,6 +63,7 @@ function App() {
     activeDocumentId,
     hasDirtyDocuments,
     setActiveDocumentId,
+    reorderDocument,
     setMarkdown,
     loadDocument,
     loadDocuments,
@@ -818,9 +819,10 @@ function App() {
         activeDocumentId={activeDocumentId}
         onSelectDocument={setActiveDocumentId}
         onCloseDocument={handleCloseDocument}
+        onReorderDocument={reorderDocument}
       />
     ),
-    [documents, activeDocumentId, handleCloseDocument],
+    [documents, activeDocumentId, handleCloseDocument, reorderDocument],
   );
 
   useKeyboardShortcuts({
