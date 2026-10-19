@@ -119,3 +119,32 @@ test("cmd+shift+brackets cycle tabs, plain cmd+brackets do not", () => {
     null,
   );
 });
+
+test("on macOS ctrl plus the key under Esc cycles tabs", () => {
+  const base = { ctrlKey: true, metaKey: false };
+
+  for (const code of ["Backquote", "IntlBackslash"]) {
+    assert.equal(getShortcutAction({ ...base, code, shiftKey: false }, true), "nextTab");
+    assert.equal(getShortcutAction({ ...base, code, shiftKey: true }, true), "previousTab");
+  }
+});
+
+test("on macOS cmd+backquote still toggles source", () => {
+  assert.equal(
+    getShortcutAction(
+      { code: "Backquote", ctrlKey: false, metaKey: true, shiftKey: false },
+      true,
+    ),
+    "toggleSource",
+  );
+});
+
+test("off macOS ctrl+backquote still toggles source", () => {
+  assert.equal(
+    getShortcutAction(
+      { code: "Backquote", ctrlKey: true, metaKey: false, shiftKey: false },
+      false,
+    ),
+    "toggleSource",
+  );
+});

@@ -6,6 +6,7 @@ import {
   createDocument,
   createLoadedDocument,
   markDocumentSaved,
+  moveDocument,
   requiresDiscardConfirmation,
   setDocumentMarkdown,
 } from "../src/utils/documentModel";
@@ -249,4 +250,21 @@ test("a pending edit for a closed document is dropped", () => {
   const next = applyPendingMarkdown(documents, "closed-id", "# gone\n");
 
   assert.deepEqual(next, documents);
+});
+
+test("moveDocument moves a tab forward and backward", () => {
+  const tabs = [{ id: "a" }, { id: "b" }, { id: "c" }];
+  const ids = (list: { id: string }[]) => list.map((tab) => tab.id).join("");
+
+  assert.equal(ids(moveDocument(tabs, "a", 2)), "bca");
+  assert.equal(ids(moveDocument(tabs, "c", 0)), "cab");
+  assert.equal(ids(moveDocument(tabs, "b", 9)), "acb");
+  assert.equal(ids(tabs), "abc");
+});
+
+test("moveDocument returns the same array when nothing moves", () => {
+  const tabs = [{ id: "a" }, { id: "b" }];
+
+  assert.equal(moveDocument(tabs, "a", 0), tabs);
+  assert.equal(moveDocument(tabs, "missing", 1), tabs);
 });

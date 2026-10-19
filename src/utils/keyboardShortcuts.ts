@@ -18,9 +18,26 @@ type ShortcutEvent = Pick<
   "code" | "ctrlKey" | "metaKey" | "shiftKey"
 >;
 
-export function getShortcutAction(event: ShortcutEvent): ShortcutAction | null {
+export function getShortcutAction(
+  event: ShortcutEvent,
+  isMac = false,
+): ShortcutAction | null {
   if (!event.ctrlKey && !event.metaKey) {
     return null;
+  }
+
+  // Ctrl plus the key under Esc cycles tabs on macOS, where Cmd is the
+  // primary modifier and so Cmd+` keeps toggling Source mode. On Apple ISO
+  // keyboards that key is §± and WebKit reports it as IntlBackslash (the
+  // two codes are swapped there), so both are accepted. Elsewhere Ctrl is
+  // the primary modifier and Ctrl+` stays the Source toggle.
+  if (
+    isMac &&
+    event.ctrlKey &&
+    !event.metaKey &&
+    (event.code === "Backquote" || event.code === "IntlBackslash")
+  ) {
+    return event.shiftKey ? "previousTab" : "nextTab";
   }
 
   // Ctrl+Tab is the browser/Windows convention; Cmd+Shift+] / [ is the
