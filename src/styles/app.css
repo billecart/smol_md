@@ -342,6 +342,9 @@ input:focus-visible {
 }
 
 .top-tabs {
+  /* Positioned so it is the tabs' offset parent: dragging measures tab
+     slots with offsetLeft, in the strip's own scrolled coordinates. */
+  position: relative;
   justify-self: center;
   display: flex;
   align-items: center;
@@ -416,6 +419,9 @@ input:focus-visible {
    read as drop targets; only the carried one stays lifted. */
 .top-tabs.dragging {
   cursor: grabbing;
+  /* Edge auto-scroll nudges scrollLeft on every pointer move; smoothing
+     each nudge makes the carried tab lag behind the cursor. */
+  scroll-behavior: auto;
 }
 
 .top-tabs.dragging .tab:not(.dragged) {
@@ -423,8 +429,11 @@ input:focus-visible {
 }
 
 .top-tabs.dragging .tab.dragged {
-  background: rgba(22, 22, 14, 0.09);
+  position: relative;
+  z-index: 1;
+  background: var(--background-tertiary);
   color: var(--text-normal);
+  box-shadow: 0 2px 8px rgba(22, 22, 14, 0.12);
 }
 
 .top-tabs.dragging .tab-label,
