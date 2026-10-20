@@ -19,11 +19,13 @@ import {
 import {
   blockquoteSchema,
   bulletListSchema,
+  codeBlockAttr,
   codeBlockSchema,
   commonmark,
   hardbreakSchema,
   headingSchema,
   htmlSchema,
+  inlineCodeAttr,
   inlineCodeSchema,
   linkSchema,
   paragraphSchema,
@@ -65,6 +67,7 @@ import {
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { SKIP, visit } from "unist-util-visit";
 import { normalizeMarkdownLineBreaks } from "../utils/markdown";
+import { codeBlockDomAttrs, inlineCodeDomAttrs } from "../utils/codeText";
 import {
   editableHtmlNodeSpec,
   insertLineBreakInHtml,
@@ -1015,6 +1018,10 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
               inclusive: false,
             }));
           }
+          // Code keeps straight quotes and plain dashes: no macOS smart
+          // quotes or dashes in code blocks or inline code (utils/codeText.ts).
+          ctx.set(codeBlockAttr.key, codeBlockDomAttrs);
+          ctx.set(inlineCodeAttr.key, inlineCodeDomAttrs);
           // Register ==text== serializer for the highlight MDAST node type,
           // and list handlers that keep tight lists tight (see markdownLists.ts).
           const stringifyOpts = ctx.get(remarkStringifyOptionsCtx);
