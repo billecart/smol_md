@@ -969,6 +969,14 @@ input:focus-visible {
   font-size: 1em;
 }
 
+/* Raw HTML from the markdown source, editable as plain text. */
+.rich-editor .ProseMirror .md-html {
+  color: var(--text-muted);
+  font-family: var(--font-editor);
+  font-size: 0.94em;
+  white-space: pre-wrap;
+}
+
 .rich-editor .ProseMirror mark {
   padding: 0.05em 0.22em;
   border-radius: 3px;

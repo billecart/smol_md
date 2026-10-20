@@ -23,6 +23,7 @@ import {
   commonmark,
   hardbreakSchema,
   headingSchema,
+  htmlSchema,
   inlineCodeSchema,
   linkSchema,
   paragraphSchema,
@@ -64,6 +65,11 @@ import {
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { SKIP, visit } from "unist-util-visit";
 import { normalizeMarkdownLineBreaks } from "../utils/markdown";
+import {
+  editableHtmlNodeSpec,
+  insertLineBreakInHtml,
+  removeEmptyHtmlNodes,
+} from "../utils/htmlNode";
 import { detectBulletMarker, listStringifyHandlers } from "../utils/markdownLists";
 import { openExternalUrl } from "../services/fileService";
 import {
@@ -176,7 +182,16 @@ const customEnterPlugin = $prose(
     new Plugin({
       props: {
         handleKeyDown(view, event) {
-          if (event.key !== "Enter" || !view.state.selection.empty) {
+          if (event.key !== "Enter") {
+            return false;
+          }
+
+          if (insertLineBreakInHtml(view.state, view.dispatch)) {
+            event.preventDefault();
+            return true;
+          }
+
+          if (!view.state.selection.empty) {
             return false;
           }
 
@@ -266,6 +281,22 @@ const customEnterPlugin = $prose(
           );
           return true;
         },
+      },
+    }),
+);
+
+// Raw HTML (`<!-- note -->`, `<br>`, block tags) as editable text instead of
+// Milkdown's atom, which the caret skips over. Registered after commonmark so
+// it replaces the stock html node. See utils/htmlNode.ts.
+const editableHtmlSchema = htmlSchema.extendSchema(() => () => editableHtmlNodeSpec);
+
+const htmlNodeCleanupPlugin = $prose(
+  () =>
+    new Plugin({
+      appendTransaction(transactions, _oldState, newState) {
+        if (!transactions.some((tr) => tr.docChanged)) return null;
+
+        return removeEmptyHtmlNodes(newState);
       },
     }),
 );
@@ -1018,6 +1049,8 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
         .use(formattingKeymap)
         .use(findDecorationPlugin)
         .use(commonmark)
+        .use(editableHtmlSchema)
+        .use(htmlNodeCleanupPlugin)
         .use(gfm)
         .use(history)
         .use(listener)

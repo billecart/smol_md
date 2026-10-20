@@ -52,3 +52,15 @@ test("the plugin scan finds the editor's plugins", () => {
   assert.equal(defined.includes("linkClickPlugin"), true);
   assert.equal(defined.length >= 8, true);
 });
+
+// The editable html node replaces Milkdown's atom only when it is registered
+// after commonmark; before it, the stock node would win and tags would go back
+// to being uneditable.
+test("the editable html node is registered after commonmark", () => {
+  const commonmarkAt = richEditor.indexOf(".use(commonmark)");
+  const htmlAt = richEditor.indexOf(".use(editableHtmlSchema)");
+
+  assert.notEqual(commonmarkAt, -1);
+  assert.notEqual(htmlAt, -1);
+  assert.equal(htmlAt > commonmarkAt, true);
+});
