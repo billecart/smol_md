@@ -48,3 +48,7 @@ It opens `.md` and `.markdown` files: double-click in Finder or Explorer, drop o
 - Files over a megabyte or two get sluggish: the whole document lives in the page.
 
 Building it yourself, tests and signing: [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
+## License
+
+[MIT](LICENSE)
