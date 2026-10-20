@@ -67,7 +67,11 @@ import {
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { SKIP, visit } from "unist-util-visit";
 import { normalizeMarkdownLineBreaks } from "../utils/markdown";
-import { codeBlockDomAttrs, inlineCodeDomAttrs } from "../utils/codeText";
+import {
+  codeBlockDomAttrs,
+  inlineCodeDomAttrs,
+  straightenQuotesInCode,
+} from "../utils/codeText";
 import {
   editableHtmlNodeSpec,
   insertLineBreakInHtml,
@@ -300,6 +304,17 @@ const htmlNodeCleanupPlugin = $prose(
         if (!transactions.some((tr) => tr.docChanged)) return null;
 
         return removeEmptyHtmlNodes(newState);
+      },
+    }),
+);
+
+// Straight quotes in code even where WebKit's smart quotes ignore the
+// no-substitution attributes (see utils/codeText.ts).
+const codeQuotesPlugin = $prose(
+  () =>
+    new Plugin({
+      appendTransaction(transactions, _oldState, newState) {
+        return straightenQuotesInCode(transactions, newState);
       },
     }),
 );
@@ -1058,6 +1073,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
         .use(commonmark)
         .use(editableHtmlSchema)
         .use(htmlNodeCleanupPlugin)
+        .use(codeQuotesPlugin)
         .use(gfm)
         .use(history)
         .use(listener)
