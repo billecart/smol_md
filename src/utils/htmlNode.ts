@@ -18,7 +18,19 @@ export const editableHtmlNodeSpec: NodeSchema = {
   marks: "",
   code: true,
   selectable: false,
-  toDOM: () => ["span", { "data-type": HTML_NODE_NAME, class: "md-html" }, 0],
+  // spellcheck off also stops macOS smart quotes and dashes in WebKit, which
+  // would turn `alt="x"` into `alt=“x”` and break the tag.
+  toDOM: () => [
+    "span",
+    {
+      "data-type": HTML_NODE_NAME,
+      class: "md-html",
+      spellcheck: "false",
+      autocorrect: "off",
+      autocapitalize: "off",
+    },
+    0,
+  ],
   parseDOM: [
     {
       tag: `span[data-type="${HTML_NODE_NAME}"]`,

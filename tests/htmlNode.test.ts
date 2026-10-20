@@ -195,3 +195,13 @@ test("nothing to clean up when every tag has text", () => {
 
   assert.equal(removeEmptyHtmlNodes(state), null);
 });
+
+// Found in the packaged app: macOS smart quotes turned a typed `"` inside a
+// tag into `“`, which breaks the HTML. WebKit skips text substitution where
+// spellcheck is off.
+test("tags turn off spellcheck, and with it macOS smart quotes", () => {
+  const toDOM = editableHtmlNodeSpec.toDOM as (node: unknown) => any;
+  const [, attrs] = toDOM(null);
+
+  assert.equal(attrs.spellcheck, "false");
+});
