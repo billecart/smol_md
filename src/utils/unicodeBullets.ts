@@ -11,7 +11,7 @@ import type { EditorState, Transaction } from "@milkdown/kit/prose/state";
 //
 // Pastes are converted into a real bullet list as they come in. Documents that
 // already contain such lines are only converted when asked, through the
-// "Convert • lines to list" command - opening a file never rewrites it.
+// "Turn • lines into a list" command - opening a file never rewrites it.
 
 // Glyphs that mean "bullet" when they open a line and are followed by
 // whitespace. The en dash is included because plain-text exports use it for
@@ -252,7 +252,7 @@ export function fitPastedListToListItem(
   return new Slice(only.content, 0, 0);
 }
 
-// The "Convert • lines to list" command, for documents that already contain
+// The "Turn • lines into a list" command, for documents that already contain
 // such lines. It works on the top-level blocks the selection touches, or on
 // the whole document when nothing is selected. Returns false, and changes
 // nothing, when there are no bullet lines to convert.

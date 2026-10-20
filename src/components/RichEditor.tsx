@@ -906,6 +906,9 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     };
   }, []);
   const [contextMenuLink, setContextMenuLink] = useState<LinkRange | null>(null);
+  // The bullet conversion is offered only when there are "• item" lines for
+  // it to convert. Shown all the time it read like a leftover debug item.
+  const [canConvertBullets, setCanConvertBullets] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] =
     useState<ContextMenuPosition | null>(null);
   const [linkDialogPos, setLinkDialogPos] = useState<LinkDialogCoords | null>(null);
@@ -1461,6 +1464,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     // and this editor runs in Chromium in dev and WebKit when packaged.
     const editor = get();
     let link: LinkRange | null = null;
+    let hasBulletLines = false;
 
     editor?.action((ctx) => {
       const view = ctx.get(editorViewCtx);
@@ -1484,9 +1488,11 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
       }
 
       link = findLinkAt(view.state, linkSchema.type(ctx), at.pos);
+      hasBulletLines = convertBulletParagraphs(bulletListTypes(ctx))(view.state);
     });
 
     setContextMenuLink(link);
+    setCanConvertBullets(hasBulletLines);
 
     setContextMenuPosition({
       x: Math.min(event.clientX, window.innerWidth - menuWidth - 8),
@@ -1589,9 +1595,11 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
           <button type="button" role="menuitem" onClick={runOrderedList}>
             Numbered list
           </button>
-          <button type="button" role="menuitem" onClick={runConvertBullets}>
-            Convert • lines to list
-          </button>
+          {canConvertBullets ? (
+            <button type="button" role="menuitem" onClick={runConvertBullets}>
+              Turn • lines into a list
+            </button>
+          ) : null}
           <button type="button" role="menuitem" onClick={runBlockquote}>
             Blockquote
           </button>
