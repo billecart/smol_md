@@ -647,7 +647,7 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     let convert_bullets_item = MenuItem::with_id(
         app,
         "convert-bullets",
-        "Convert • Lines to List",
+        "Turn • Lines into a List",
         true,
         None::<&str>,
     )?;
