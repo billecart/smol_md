@@ -1,6 +1,7 @@
 import type { Node as ProseNode } from "@milkdown/kit/prose/model";
 import type { Command, EditorState, Transaction } from "@milkdown/kit/prose/state";
 import type { NodeSchema } from "@milkdown/kit/transformer";
+import { noTextSubstitutionAttrs } from "./codeText";
 
 // Raw HTML in markdown (`<!-- note -->`, `<br>`, `<div>…</div>`) is kept as
 // an `html` node so it survives a round trip untouched. Milkdown's own version
@@ -18,17 +19,11 @@ export const editableHtmlNodeSpec: NodeSchema = {
   marks: "",
   code: true,
   selectable: false,
-  // spellcheck off also stops macOS smart quotes and dashes in WebKit, which
-  // would turn `alt="x"` into `alt=“x”` and break the tag.
+  // No smart quotes or dashes, which would turn `alt="x"` into `alt=“x”` and
+  // break the tag. See utils/codeText.ts.
   toDOM: () => [
     "span",
-    {
-      "data-type": HTML_NODE_NAME,
-      class: "md-html",
-      spellcheck: "false",
-      autocorrect: "off",
-      autocapitalize: "off",
-    },
+    { "data-type": HTML_NODE_NAME, class: "md-html", ...noTextSubstitutionAttrs },
     0,
   ],
   parseDOM: [
