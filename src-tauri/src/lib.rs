@@ -31,6 +31,20 @@ struct OpenedMarkdownFiles(Mutex<Vec<String>>);
 #[derive(Default)]
 struct HasUnsavedChanges(AtomicBool);
 
+// Whether a quit should be held back so the frontend can ask about unsaved
+// changes. Only when a window is still there to ask in: once the last window
+// is gone (the user already answered "Close without saving"), holding the quit
+// would leave a windowless process behind that never exits, and every later
+// Finder double-click would be sent to that process and go nowhere.
+fn should_confirm_quit(app: &tauri::AppHandle) -> bool {
+    let has_unsaved_changes = app
+        .try_state::<HasUnsavedChanges>()
+        .map(|state| state.0.load(Ordering::SeqCst))
+        .unwrap_or(false);
+
+    has_unsaved_changes && !app.webview_windows().is_empty()
+}
+
 // Holds the live "Open Recent" Submenu so `set_recent_documents` can rebuild
 // its contents in place without touching the rest of the native menu. Only
 // populated on macOS, where the native menu (and this submenu) actually
@@ -759,12 +773,7 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
 #[cfg(target_os = "macos")]
 fn handle_quit_menu_event(app: &tauri::AppHandle) {
-    let has_unsaved_changes = app
-        .try_state::<HasUnsavedChanges>()
-        .map(|state| state.0.load(Ordering::SeqCst))
-        .unwrap_or(false);
-
-    if has_unsaved_changes {
+    if should_confirm_quit(app) {
         // Let the frontend confirm and call `force_quit` itself, same as the
         // `RunEvent::ExitRequested` path below.
         let _ = app.emit("quit-requested", ());
@@ -842,12 +851,7 @@ pub fn run() {
             }
 
             if let RunEvent::ExitRequested { api, .. } = _event {
-                let has_unsaved_changes = _app
-                    .try_state::<HasUnsavedChanges>()
-                    .map(|state| state.0.load(Ordering::SeqCst))
-                    .unwrap_or(false);
-
-                if has_unsaved_changes {
+                if should_confirm_quit(_app) {
                     api.prevent_exit();
                     let _ = _app.emit("quit-requested", ());
                 }
