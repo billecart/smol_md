@@ -12,6 +12,7 @@ import {
 import { SourceEditor } from "./components/SourceEditor";
 import { StatusBar } from "./components/StatusBar";
 import { TopTabs } from "./components/TopTabs";
+import { UpdateNotice } from "./components/UpdateNotice";
 import { Toolbar } from "./components/Toolbar";
 import { useBeforeCloseWarning } from "./hooks/useBeforeCloseWarning";
 import { useDocumentState } from "./hooks/useDocumentState";
@@ -35,7 +36,9 @@ import {
   saveMarkdownFileAs,
   type OpenedMarkdownFile,
   type OpenedMarkdownFilesResult,
+  openExternalUrl,
 } from "./services/fileService";
+import { checkForUpdate } from "./services/updateService";
 import { isMacOs } from "./utils/platform";
 import {
   addRecentDocument,
@@ -46,6 +49,10 @@ import {
 import { applyPendingMarkdown } from "./utils/documentModel";
 import { pickDefaultDirectory } from "./utils/filePaths";
 import { isUnsafeEmptyOverwrite } from "./utils/saveSafety";
+import {
+  LATEST_RELEASE_PAGE_URL,
+  saveDismissedUpdateVersion,
+} from "./utils/updateCheck";
 import { zoomIn, zoomOut, zoomStyle } from "./utils/zoom";
 
 type EditorMode = "rich" | "source";
@@ -85,6 +92,35 @@ function App() {
   }, []);
 
   const dismissNotice = useCallback(() => setNotice(null), []);
+  const [availableUpdate, setAvailableUpdate] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    void checkForUpdate().then((version) => {
+      if (isCurrent) {
+        setAvailableUpdate(version);
+      }
+    });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  const dismissUpdate = useCallback(() => {
+    setAvailableUpdate((version) => {
+      if (version) {
+        saveDismissedUpdateVersion(version);
+      }
+      return null;
+    });
+  }, []);
+
+  const downloadUpdate = useCallback(() => {
+    void openExternalUrl(LATEST_RELEASE_PAGE_URL);
+    dismissUpdate();
+  }, [dismissUpdate]);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [editorMode, setEditorMode] = useState<EditorMode>("rich");
   const [recentDocuments, setRecentDocuments] = useState<RecentDocument[]>([]);
@@ -857,6 +893,14 @@ function App() {
         />
       ) : null}
       <Notice notice={notice} onDismiss={dismissNotice} />
+      {/* A problem takes the spot first; the update waits underneath it. */}
+      {notice ? null : (
+        <UpdateNotice
+          version={availableUpdate}
+          onDownload={downloadUpdate}
+          onDismiss={dismissUpdate}
+        />
+      )}
       <div className="top-chrome-hitbox" aria-hidden="true" />
       <div
         className={[
