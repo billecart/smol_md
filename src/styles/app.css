@@ -1418,6 +1418,27 @@ input:focus-visible {
   color: var(--text-normal);
 }
 
+/* Good news, so the notice's text loses its error colour. */
+.update-notice-text {
+  color: var(--text-normal);
+}
+
+.update-notice-download {
+  flex: none;
+  padding: 3px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-normal);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.update-notice-download:hover {
+  background: rgba(22, 22, 14, 0.06);
+}
+
 /* Print / Export to PDF (File > Print..., wired to window.print() via the
  * print_document Tauri command - see src-tauri/src/lib.rs). Everything that
  * is app chrome rather than document content gets hidden; the document

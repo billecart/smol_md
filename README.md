@@ -19,7 +19,8 @@ A smol markdown editor for macOS and Windows I vibecoded for myself. It's for th
 - find in both modes;
 - mono, sans or serif, and zoom;
 - print and export to PDF (macOS);
-- asks before you lose anything, and a crash mid-save can't leave you with half a document.
+- asks before you lose anything, and a crash mid-save can't leave you with half a document;
+- tells you when a new version is out. It asks GitHub once per launch; your documents are never sent anywhere.
 
 It opens `.md` and `.markdown` files: double-click in Finder or Explorer, drop on the Dock icon on a Mac, or pick one from Open Recent.
 
