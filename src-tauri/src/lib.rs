@@ -571,8 +571,14 @@ fn markdown_path_from_url(url: &Url) -> Option<String> {
 
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn handle_opened_urls(app: &tauri::AppHandle, urls: Vec<Url>) {
-    let paths: Vec<String> = urls.iter().filter_map(markdown_path_from_url).collect();
+    queue_opened_markdown_files(app, urls.iter().filter_map(markdown_path_from_url).collect());
+}
 
+#[cfg_attr(
+    not(any(target_os = "macos", target_os = "ios", target_os = "windows")),
+    allow(dead_code)
+)]
+fn queue_opened_markdown_files(app: &tauri::AppHandle, paths: Vec<String>) {
     if paths.is_empty() {
         return;
     }
@@ -584,6 +590,24 @@ fn handle_opened_urls(app: &tauri::AppHandle, urls: Vec<Url>) {
     }
 
     let _ = app.emit("opened-markdown-files", paths);
+}
+
+// The arguments a second launch was given, first one being the program
+// itself. A relative path is relative to where that launch was started, not
+// to this process.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn markdown_paths_from_second_launch(args: Vec<String>, cwd: &str) -> Vec<String> {
+    args.into_iter()
+        .skip(1)
+        .filter_map(|arg| markdown_path_from_arg(OsString::from(arg)))
+        .map(|path| {
+            if Path::new(&path).is_absolute() {
+                path
+            } else {
+                Path::new(cwd).join(path).display().to_string()
+            }
+        })
+        .collect()
 }
 
 // The default Tauri menu on macOS wires `PredefinedMenuItem::quit` to Cmd+Q, which calls
@@ -830,7 +854,24 @@ fn handle_quit_menu_event(app: &tauri::AppHandle) {
 
 pub fn run() {
     #[allow(unused_mut)]
-    let mut builder = tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    // Double-clicking a second file in Explorer started a second copy of the
+    // app, with its own window and its own idea of what was unsaved, instead
+    // of a new tab. The plugin has to be registered first.
+    #[cfg(target_os = "windows")]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            if let Some(window) = app.webview_windows().into_values().next() {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+
+            queue_opened_markdown_files(app, markdown_paths_from_second_launch(args, &cwd));
+        }));
+    }
+
+    builder = builder
         .plugin(tauri_plugin_dialog::init())
         .manage(OpenedMarkdownFiles::default())
         .manage(HasUnsavedChanges::default())
@@ -1019,6 +1060,31 @@ mod tests {
         assert_eq!(
             url_without_spaces("https://x.com/a b?q=1&p=\"2\""),
             "https://x.com/a%20b?q=1&p=%222%22"
+        );
+    }
+
+    #[test]
+    fn second_launch_passes_on_every_markdown_file() {
+        let args = vec![
+            "C:\\Program Files\\smol_md\\smol_md.exe".to_string(),
+            "/notes/a.md".to_string(),
+            "/notes/picture.png".to_string(),
+            "/notes/b.markdown".to_string(),
+        ];
+
+        assert_eq!(
+            markdown_paths_from_second_launch(args, "/elsewhere"),
+            vec!["/notes/a.md".to_string(), "/notes/b.markdown".to_string()]
+        );
+    }
+
+    #[test]
+    fn second_launch_resolves_relative_paths_against_its_own_folder() {
+        let args = vec!["smol_md".to_string(), "todo.md".to_string()];
+
+        assert_eq!(
+            markdown_paths_from_second_launch(args, "/home/me/notes"),
+            vec!["/home/me/notes/todo.md".to_string()]
         );
     }
 
