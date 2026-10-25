@@ -101,6 +101,7 @@ import {
   outdentListItem,
   removeLinkAt,
   runBlockFormat,
+  setLinkOnSelection,
   updateLinkAt,
   type LinkRange,
 } from "../utils/editorCommands";
@@ -319,6 +320,13 @@ const codeQuotesPlugin = $prose(
     }),
 );
 
+function applyLink(ctx: Ctx, href: string) {
+  const view = ctx.get(editorViewCtx);
+  if (!setLinkOnSelection(view.state, linkSchema.type(ctx), href, view.dispatch)) {
+    callCommand(toggleLinkCommand.key, { href })(ctx);
+  }
+}
+
 const formattingKeymap = $prose((ctx) =>
   keymap({
     "Mod-b": () => {
@@ -331,9 +339,7 @@ const formattingKeymap = $prose((ctx) =>
     },
     "Mod-k": () => {
       const view = ctx.get(editorViewCtx);
-      openLinkDialog(view, (href) => {
-        callCommand(toggleLinkCommand.key, { href })(ctx);
-      });
+      openLinkDialog(view, (href) => applyLink(ctx, href));
       return true;
     },
     "Mod-1": () => {
@@ -1045,6 +1051,9 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
           const stringifyOpts = ctx.get(remarkStringifyOptionsCtx);
           ctx.set(remarkStringifyOptionsCtx, {
             ...stringifyOpts,
+            // remark writes `***` by default, so every `---` rule changed
+            // on the first edit anywhere in the file.
+            rule: "-",
             handlers: {
               ...(stringifyOpts as any).handlers,
               ...listStringifyHandlers(() => bulletMarker.current),
@@ -1341,9 +1350,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     if (!editor) return;
     editor.action((ctx) => {
       const view = ctx.get(editorViewCtx);
-      openLinkDialog(view, (href) => {
-        callCommand(toggleLinkCommand.key, { href })(ctx);
-      });
+      openLinkDialog(view, (href) => applyLink(ctx, href));
     });
   };
 
@@ -1570,21 +1577,21 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
           <button
             type="button"
             role="menuitem"
-            onClick={() => runCommand(wrapInHeadingCommand, 1)}
+            onClick={() => runHeading(1)}
           >
             Heading 1
           </button>
           <button
             type="button"
             role="menuitem"
-            onClick={() => runCommand(wrapInHeadingCommand, 2)}
+            onClick={() => runHeading(2)}
           >
             Heading 2
           </button>
           <button
             type="button"
             role="menuitem"
-            onClick={() => runCommand(wrapInHeadingCommand, 3)}
+            onClick={() => runHeading(3)}
           >
             Heading 3
           </button>

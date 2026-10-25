@@ -16,13 +16,16 @@ export type ShortcutAction =
 type ShortcutEvent = Pick<
   KeyboardEvent,
   "code" | "ctrlKey" | "metaKey" | "shiftKey"
->;
+> & { altKey?: boolean };
 
 export function getShortcutAction(
   event: ShortcutEvent,
   isMac = false,
 ): ShortcutAction | null {
-  if (!event.ctrlKey && !event.metaKey) {
+  // On Windows AltGr arrives as Ctrl+Alt, so a Polish ś (AltGr+S) or a
+  // German \ (AltGr+ß) would otherwise fire Save or Zoom out and never be
+  // typed. None of the shortcuts use Alt.
+  if ((!event.ctrlKey && !event.metaKey) || event.altKey) {
     return null;
   }
 
@@ -44,6 +47,17 @@ export function getShortcutAction(
   // macOS one (Safari, Finder, Terminal). Both cycle through open tabs.
   if (event.code === "Tab" && event.ctrlKey) {
     return event.shiftKey ? "previousTab" : "nextTab";
+  }
+
+  // Past this point only the platform's primary modifier counts. On macOS
+  // Ctrl+N, Ctrl+F, Ctrl+O and friends are text-editing keys (next line,
+  // forward a character, open a line), not New, Find and Open.
+  const hasPrimaryModifier = isMac
+    ? event.metaKey && !event.ctrlKey
+    : event.ctrlKey && !event.metaKey;
+
+  if (!hasPrimaryModifier) {
+    return null;
   }
 
   switch (event.code) {

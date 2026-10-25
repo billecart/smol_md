@@ -215,6 +215,32 @@ export function updateLinkAt(
   return true;
 }
 
+// Cmd+K and the menu's Link item used toggleMark, which removes the link when
+// the selection already has one - so re-pointing a link deleted it instead.
+// Returns false when there is no link to re-point, and the caller toggles as
+// before.
+export function setLinkOnSelection(
+  state: EditorState,
+  linkType: MarkType,
+  href: string,
+  dispatch?: (tr: Transaction) => void,
+): boolean {
+  const { from, to, empty } = state.selection;
+
+  if (empty) {
+    return updateLinkAt(state, linkType, from, href, dispatch);
+  }
+
+  if (!state.doc.rangeHasMark(from, to, linkType)) return false;
+
+  dispatch?.(
+    state.tr
+      .removeMark(from, to, linkType)
+      .addMark(from, to, linkType.create({ href })),
+  );
+  return true;
+}
+
 // Backspace at the start of a paragraph that follows a heading used to pull
 // the whole paragraph up into the heading, so a paragraph of body text
 // suddenly rendered at 30px. It is the conventional behaviour and it is

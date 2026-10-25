@@ -84,3 +84,17 @@ test("normalizeExternalUrl handles schemes and bare hostnames", () => {
   assert.equal(normalizeExternalUrl(""), null);
   assert.equal(normalizeExternalUrl("   "), null);
 });
+
+test("an image is not read as a link", () => {
+  assert.equal(splitMarkdownLinks("See ![diagram](img/arch.png) here"), null);
+  assert.equal("![diagram](img/arch.png)".match(MARKDOWN_LINK_INPUT), null);
+});
+
+test("a link next to an image is still found", () => {
+  const segments = splitMarkdownLinks("![a](a.png) and [b](https://b.example)");
+
+  assert.deepEqual(
+    segments?.filter((segment) => segment.href).map((segment) => segment.href),
+    ["https://b.example"],
+  );
+});

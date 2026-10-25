@@ -20,8 +20,10 @@ import {
   findLinkAt,
   makeBodyText,
   removeLinkAt,
+  setLinkOnSelection,
   updateLinkAt,
 } from "../src/utils/editorCommands";
+import { TextSelection } from "@milkdown/kit/prose/state";
 import { test } from "./testHarness";
 
 function linkedAndBold(text: string, href: string) {
@@ -189,4 +191,43 @@ test("finding link at any position across its range yields the destination", () 
   assert.equal(atEnd?.href, "https://destination.com");
   assert.equal(findLinkAt(state, marks.link, 2), null);
   assert.equal(findLinkAt(state, marks.link, 13), null);
+});
+
+test("re-linking selected linked text changes the href instead of removing it", () => {
+  const base = stateFrom(doc(p("go ", link("here", "https://old.example"), " now")));
+  const state = base.apply(
+    base.tr.setSelection(TextSelection.create(base.doc, 4, 8)),
+  );
+
+  const result = runCommand(state, (s, dispatch) =>
+    setLinkOnSelection(s, marks.link, "https://new.example", dispatch),
+  );
+
+  assert.equal(result.handled, true);
+  assert.equal(findLinkAt(result.state, marks.link, 5)?.href, "https://new.example");
+});
+
+test("re-linking with the caret inside a link re-points the whole link", () => {
+  const base = stateFrom(doc(p(link("here", "https://old.example"))));
+  const state = base.apply(base.tr.setSelection(TextSelection.create(base.doc, 3)));
+
+  const result = runCommand(state, (s, dispatch) =>
+    setLinkOnSelection(s, marks.link, "https://new.example", dispatch),
+  );
+
+  assert.equal(result.handled, true);
+  assert.equal(findLinkAt(result.state, marks.link, 2)?.href, "https://new.example");
+});
+
+test("linking unlinked text is left to the normal toggle", () => {
+  const base = stateFrom(doc(p("plain text")));
+  const state = base.apply(
+    base.tr.setSelection(TextSelection.create(base.doc, 1, 6)),
+  );
+
+  const result = runCommand(state, (s, dispatch) =>
+    setLinkOnSelection(s, marks.link, "https://new.example", dispatch),
+  );
+
+  assert.equal(result.handled, false);
 });
