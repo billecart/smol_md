@@ -10,6 +10,8 @@ A smol markdown editor for macOS and Windows I vibecoded for myself. It's for th
 
 [Latest release](https://github.com/billecart/smol_md/releases/latest): a `.dmg` for Apple Silicon Macs, an installer or an `.msi` for Windows. The Mac build is signed and notarised, so no "damaged" or "unidentified developer" warnings.
 
+On 1.1.15 or earlier? Download the latest release once by hand. From then on smol_md tells you when a new version is out.
+
 ## What it does
 
 - Rich and Source mode, two views of the same file;

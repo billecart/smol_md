@@ -10,7 +10,9 @@
 // A URL is everything up to the closing paren, so a trailing `)` inside the
 // URL itself is not supported - the same limit CommonMark has for unbracketed
 // destinations, and the reason `<...>` exists there.
-const LINK_SOURCE = String.raw`\[([^\]\n]+)\]\(\s*(\S+?)(?:\s+"([^"]*)")?\s*\)`;
+// The lookbehind leaves `![alt](src)` alone: that is an image, and turning it
+// into `!` plus a link lost the image and saved as `\![alt](src)`.
+const LINK_SOURCE = String.raw`(?<!!)\[([^\]\n]+)\]\(\s*(\S+?)(?:\s+"([^"]*)")?\s*\)`;
 
 // Anchored at the end, for the input rule: it fires on the closing paren.
 export const MARKDOWN_LINK_INPUT = new RegExp(`${LINK_SOURCE}$`);

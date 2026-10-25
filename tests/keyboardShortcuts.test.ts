@@ -52,36 +52,45 @@ test("source toggle uses the physical backquote key", () => {
 
 test("Cmd+W closes active tab", () => {
   assert.equal(
-    getShortcutAction({
-      code: "KeyW",
-      ctrlKey: false,
-      metaKey: true,
-      shiftKey: false,
-    }),
+    getShortcutAction(
+      {
+        code: "KeyW",
+        ctrlKey: false,
+        metaKey: true,
+        shiftKey: false,
+      },
+      true,
+    ),
     "closeTab",
   );
 });
 
 test("Cmd+Shift+W closes window", () => {
   assert.equal(
-    getShortcutAction({
-      code: "KeyW",
-      ctrlKey: false,
-      metaKey: true,
-      shiftKey: true,
-    }),
+    getShortcutAction(
+      {
+        code: "KeyW",
+        ctrlKey: false,
+        metaKey: true,
+        shiftKey: true,
+      },
+      true,
+    ),
     "closeWindow",
   );
 });
 
 test("Cmd+F triggers find", () => {
   assert.equal(
-    getShortcutAction({
-      code: "KeyF",
-      ctrlKey: false,
-      metaKey: true,
-      shiftKey: false,
-    }),
+    getShortcutAction(
+      {
+        code: "KeyF",
+        ctrlKey: false,
+        metaKey: true,
+        shiftKey: false,
+      },
+      true,
+    ),
     "find",
   );
 });
@@ -107,15 +116,15 @@ test("ctrl+tab cycles tabs forward and ctrl+shift+tab backward", () => {
 test("cmd+shift+brackets cycle tabs, plain cmd+brackets do not", () => {
   const base = { ctrlKey: false, metaKey: true };
   assert.equal(
-    getShortcutAction({ ...base, code: "BracketRight", shiftKey: true }),
+    getShortcutAction({ ...base, code: "BracketRight", shiftKey: true }, true),
     "nextTab",
   );
   assert.equal(
-    getShortcutAction({ ...base, code: "BracketLeft", shiftKey: true }),
+    getShortcutAction({ ...base, code: "BracketLeft", shiftKey: true }, true),
     "previousTab",
   );
   assert.equal(
-    getShortcutAction({ ...base, code: "BracketRight", shiftKey: false }),
+    getShortcutAction({ ...base, code: "BracketRight", shiftKey: false }, true),
     null,
   );
 });
@@ -146,5 +155,42 @@ test("off macOS ctrl+backquote still toggles source", () => {
       false,
     ),
     "toggleSource",
+  );
+});
+
+test("AltGr characters on Windows are typed, not taken as shortcuts", () => {
+  // AltGr+S is ś on a Polish layout; WebView2 reports it as Ctrl+Alt+S.
+  const altGr = { ctrlKey: true, metaKey: false, altKey: true, shiftKey: false };
+
+  for (const code of ["KeyS", "KeyN", "KeyO", "Minus", "Digit0", "Equal"]) {
+    assert.equal(getShortcutAction({ ...altGr, code }, false), null);
+  }
+});
+
+test("on macOS ctrl+letter is left to text editing", () => {
+  const ctrl = { ctrlKey: true, metaKey: false, shiftKey: false };
+
+  for (const code of ["KeyN", "KeyF", "KeyO", "KeyW", "KeyS", "Minus", "Digit0"]) {
+    assert.equal(getShortcutAction({ ...ctrl, code }, true), null);
+  }
+});
+
+test("on macOS ctrl+tab still cycles tabs", () => {
+  assert.equal(
+    getShortcutAction(
+      { code: "Tab", ctrlKey: true, metaKey: false, shiftKey: false },
+      true,
+    ),
+    "nextTab",
+  );
+});
+
+test("off macOS the windows key does not trigger shortcuts", () => {
+  assert.equal(
+    getShortcutAction(
+      { code: "KeyS", ctrlKey: false, metaKey: true, shiftKey: false },
+      false,
+    ),
+    null,
   );
 });

@@ -125,10 +125,7 @@ fn export_pdf(window: tauri::WebviewWindow, path: String) -> Result<(), String> 
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
     let trimmed = url.trim();
-    if !trimmed.starts_with("https://")
-        && !trimmed.starts_with("http://")
-        && !trimmed.starts_with("mailto:")
-    {
+    if !has_supported_url_scheme(trimmed) {
         return Err(format!("Unsupported URL scheme: {url}"));
     }
 
@@ -143,8 +140,12 @@ fn open_url(url: String) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", trimmed])
+        // Not `cmd /C start`: cmd reads `&`, `|` and `%` in the URL as its own
+        // syntax, which cut every link with a query string short and let a
+        // link like `https://x/&calc` run a program.
+        std::process::Command::new("rundll32")
+            .arg("url.dll,FileProtocolHandler")
+            .arg(url_without_spaces(trimmed))
             .spawn()
             .map_err(|error| error.to_string())?;
         Ok(())
@@ -158,6 +159,21 @@ fn open_url(url: String) -> Result<(), String> {
             .map_err(|error| error.to_string())?;
         Ok(())
     }
+}
+
+// The frontend accepts `HTTPS://` and `Mailto:` too, so this has to as well.
+fn has_supported_url_scheme(url: &str) -> bool {
+    ["https://", "http://", "mailto:"].iter().any(|scheme| {
+        url.get(..scheme.len())
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case(scheme))
+    })
+}
+
+// rundll32 hands its command line over unparsed, so a space or quote would
+// arrive inside the URL wrapped in the quotes Rust added around it.
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn url_without_spaces(url: &str) -> String {
+    url.replace(' ', "%20").replace('"', "%22")
 }
 
 // AppKit reports the outcome of an asynchronous print operation by messaging
@@ -439,8 +455,25 @@ fn existing_file_has_content(path: &Path) -> Result<bool, String> {
 }
 
 fn write_file_durably(path: &Path, contents: &[u8]) -> Result<(), String> {
+    // Save into the file a symlink points at, rather than replacing the link
+    // itself with a regular file and leaving the real file unchanged.
+    let path = &fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let existing_permissions = match fs::metadata(path) {
+        Ok(metadata) if metadata.permissions().readonly() => {
+            return Err("This file is read-only, so it can't be saved over.".to_string());
+        }
+        Ok(metadata) => Some(metadata.permissions()),
+        Err(_) => None,
+    };
+
     let temporary_path = create_temporary_save_path(path)?;
     let write_result = write_temporary_file(&temporary_path, contents)
+        .and_then(|()| match existing_permissions {
+            // Otherwise a private 0600 note comes back readable by everyone.
+            Some(permissions) => fs::set_permissions(&temporary_path, permissions)
+                .map_err(|error| format!("Could not prepare temporary save file: {error}")),
+            None => Ok(()),
+        })
         .and_then(|()| replace_file_with_temporary(path, &temporary_path));
 
     if write_result.is_err() {
@@ -462,13 +495,24 @@ fn write_temporary_file(path: &Path, contents: &[u8]) -> Result<(), String> {
         .map_err(|error| format!("Could not write temporary save file: {error}"))
 }
 
+// `rename` replaces the existing file in one step on both platforms (on
+// Windows it is MoveFileExW with MOVEFILE_REPLACE_EXISTING). Deleting the
+// original first, as this used to, meant a failed rename left no copy at all.
+// On Windows an antivirus or sync client often holds the just-written file
+// for a moment, so a failed rename is retried briefly before giving up.
 fn replace_file_with_temporary(path: &Path, temporary_path: &Path) -> Result<(), String> {
-    if path.exists() {
-        fs::remove_file(path)
-            .map_err(|error| format!("Could not replace existing file: {error}"))?;
-    }
+    let mut attempts_left = 5;
 
-    fs::rename(temporary_path, path).map_err(|error| format!("Could not finish save: {error}"))
+    loop {
+        match fs::rename(temporary_path, path) {
+            Ok(()) => return Ok(()),
+            Err(_) if attempts_left > 0 => {
+                attempts_left -= 1;
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            Err(error) => return Err(format!("Could not finish save: {error}")),
+        }
+    }
 }
 
 fn create_temporary_save_path(path: &Path) -> Result<PathBuf, String> {
@@ -905,6 +949,77 @@ mod tests {
             text
         );
         let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_through_symlink_updates_the_target() {
+        let dir = unique_test_dir("symlink");
+        fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("real.md");
+        let link = dir.join("link.md");
+        fs::write(&target, "original").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        write_markdown_file_blocking(link.display().to_string(), "updated".to_string()).unwrap();
+
+        assert!(fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "updated");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_keeps_file_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = unique_test_dir("permissions");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("private.md");
+        fs::write(&path, "original").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+
+        write_markdown_file_blocking(path.display().to_string(), "updated".to_string()).unwrap();
+
+        assert_eq!(fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn refuses_to_save_over_read_only_file() {
+        let dir = unique_test_dir("read-only");
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("locked.md");
+        fs::write(&path, "original").unwrap();
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(&path, permissions).unwrap();
+
+        let result = write_markdown_file_blocking(path.display().to_string(), "updated".to_string());
+
+        assert!(result.is_err());
+        assert_eq!(fs::read_to_string(&path).unwrap(), "original");
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        #[allow(clippy::permissions_set_readonly_false)]
+        permissions.set_readonly(false);
+        let _ = fs::set_permissions(&path, permissions);
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn url_scheme_check_ignores_case() {
+        assert!(has_supported_url_scheme("HTTPS://example.com"));
+        assert!(has_supported_url_scheme("Mailto:me@example.com"));
+        assert!(!has_supported_url_scheme("file:///etc/passwd"));
+        assert!(!has_supported_url_scheme("http:"));
+    }
+
+    #[test]
+    fn windows_url_keeps_ampersands_and_encodes_spaces() {
+        assert_eq!(
+            url_without_spaces("https://x.com/a b?q=1&p=\"2\""),
+            "https://x.com/a%20b?q=1&p=%222%22"
+        );
     }
 
     #[test]
