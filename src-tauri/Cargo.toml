@@ -18,6 +18,11 @@ serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 
+# Windows starts a new process for every file opened from Explorer; this
+# hands the file to the window that is already open instead.
+[target.'cfg(target_os = "windows")'.dependencies]
+tauri-plugin-single-instance = "2"
+
 # Direct pins at the versions wry 0.54.4 already brings in transitively, so
 # these don't add a second copy of the crate to the tree. Used by
 # `export_pdf` in src/lib.rs to drive WKWebView's print machinery directly

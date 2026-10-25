@@ -57,7 +57,7 @@ test("the plugin scan finds the editor's plugins", () => {
 // after commonmark; before it, the stock node would win and tags would go back
 // to being uneditable.
 test("the editable html node is registered after commonmark", () => {
-  const commonmarkAt = richEditor.indexOf(".use(commonmark)");
+  const commonmarkAt = richEditor.indexOf(".use(commonmarkWithoutBreakStripping)");
   const htmlAt = richEditor.indexOf(".use(editableHtmlSchema)");
 
   assert.notEqual(commonmarkAt, -1);

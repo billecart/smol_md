@@ -22,6 +22,7 @@ import {
   codeBlockAttr,
   codeBlockSchema,
   commonmark,
+  remarkPreserveEmptyLinePlugin,
   hardbreakSchema,
   headingSchema,
   htmlSchema,
@@ -65,7 +66,6 @@ import {
   replaceAll,
 } from "@milkdown/kit/utils";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
-import { SKIP, visit } from "unist-util-visit";
 import { normalizeMarkdownLineBreaks } from "../utils/markdown";
 import {
   codeBlockDomAttrs,
@@ -78,6 +78,12 @@ import {
   removeEmptyHtmlNodes,
 } from "../utils/htmlNode";
 import { detectBulletMarker, listStringifyHandlers } from "../utils/markdownLists";
+import {
+  handleText,
+  protectMarkSpaces,
+  remarkEmptyParagraphMarkers,
+  remarkHighlight,
+} from "../utils/markdownSyntax";
 import { openExternalUrl } from "../services/fileService";
 import {
   MARKDOWN_LINK_INPUT,
@@ -390,44 +396,20 @@ const formattingKeymap = $prose((ctx) =>
   }),
 );
 
-// Highlight mark: ==text== syntax rendered as <mark>.
-// The remark plugin transforms ==text== text nodes into highlight MDAST nodes
-// during parsing; the stringify handler converts them back to ==text==.
-function remarkHighlightTransformer() {
-  return (tree: Parameters<typeof visit>[0]) => {
-    visit(tree, "text", (node: any, index: any, parent: any) => {
-      if (index == null || !parent?.children) return;
-      const value: string = node.value;
-      const re = /==([^=\n]+)==/g;
-      if (!re.test(value)) return;
-      re.lastIndex = 0;
+// Highlight mark: ==text== syntax rendered as <mark>. Parsing and writing
+// it back live in utils/markdownSyntax.ts.
+const highlightRemarkPlugin = $remark("highlight", () => remarkHighlight);
 
-      const newNodes: any[] = [];
-      let last = 0;
-      let match: RegExpExecArray | null;
-      while ((match = re.exec(value)) !== null) {
-        if (match.index > last) {
-          newNodes.push({ type: "text", value: value.slice(last, match.index) });
-        }
-        newNodes.push({
-          type: "highlight",
-          children: [{ type: "text", value: match[1] }],
-        });
-        last = match.index + match[0].length;
-      }
-      if (last < value.length) {
-        newNodes.push({ type: "text", value: value.slice(last) });
-      }
+const emptyParagraphMarkersPlugin = $remark(
+  "empty-paragraph-markers",
+  () => remarkEmptyParagraphMarkers,
+);
 
-      parent.children.splice(index, 1, ...newNodes);
-      return [SKIP, index + newNodes.length] as const;
-    });
-  };
-}
-
-const highlightRemarkPlugin = $remark(
-  "highlight",
-  () => remarkHighlightTransformer,
+// Milkdown's own version of the plugin above, which deleted every `<br>`.
+// Its options entry stays: the paragraph serializer checks for it before
+// writing an empty paragraph as `<br />`.
+const commonmarkWithoutBreakStripping = commonmark.filter(
+  (plugin) => plugin !== remarkPreserveEmptyLinePlugin.plugin,
 );
 
 const highlightSchema = $markSchema("highlight", () => ({
@@ -895,7 +877,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
       return null;
     }
 
-    deliverMarkdown(serialize(view.state.doc));
+    deliverMarkdown(serialize(protectMarkSpaces(view.state.doc)));
     return lastKnownMarkdown.current;
   };
 
@@ -1024,13 +1006,15 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
         .config((ctx) => {
           ctx.set(rootCtx, root);
           ctx.set(defaultValueCtx, value);
-          ctx.get(listenerCtx).markdownUpdated((_, markdown) => {
+          // `updated` rather than `markdownUpdated`, so the document goes
+          // through protectMarkSpaces like flush() does before serializing.
+          ctx.get(listenerCtx).updated((innerCtx, doc) => {
             // Already delivered by flush(), or the editor is gone.
             if (!hasPendingEdit.current || isUnmounted.current) {
               return;
             }
 
-            deliverMarkdown(markdown);
+            deliverMarkdown(innerCtx.get(serializerCtx)(protectMarkSpaces(doc)));
           });
           // Links and inline code stop at their last letter. Milkdown leaves
           // both marks inclusive (ProseMirror's default), so a space or full
@@ -1046,8 +1030,8 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
           // quotes or dashes in code blocks or inline code (utils/codeText.ts).
           ctx.set(codeBlockAttr.key, codeBlockDomAttrs);
           ctx.set(inlineCodeAttr.key, inlineCodeDomAttrs);
-          // Register ==text== serializer for the highlight MDAST node type,
-          // and list handlers that keep tight lists tight (see markdownLists.ts).
+          // List handlers that keep tight lists tight (see markdownLists.ts),
+          // and text that is not escaped more than it needs (markdownSyntax.ts).
           const stringifyOpts = ctx.get(remarkStringifyOptionsCtx);
           ctx.set(remarkStringifyOptionsCtx, {
             ...stringifyOpts,
@@ -1057,16 +1041,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
             handlers: {
               ...(stringifyOpts as any).handlers,
               ...listStringifyHandlers(() => bulletMarker.current),
-              highlight: (node: any, _parent: any, state: any, info: any) => {
-                const exit = state.enter("highlight");
-                const value = state.containerPhrasing(node, {
-                  before: "=",
-                  after: "=",
-                  ...info,
-                });
-                exit();
-                return `==${value}==`;
-              },
+              text: handleText,
             },
           });
         })
@@ -1082,7 +1057,8 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
         .use(customEnterPlugin)
         .use(formattingKeymap)
         .use(findDecorationPlugin)
-        .use(commonmark)
+        .use(commonmarkWithoutBreakStripping)
+        .use(emptyParagraphMarkersPlugin)
         .use(editableHtmlSchema)
         .use(htmlNodeCleanupPlugin)
         .use(codeQuotesPlugin)
