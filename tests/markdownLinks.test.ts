@@ -75,6 +75,40 @@ test("splitting a bare link produces exactly one segment", () => {
   ]);
 });
 
+// A URL pasted from the address bar stayed plain text in Rich mode.
+test("splitting turns a pasted bare URL into a link", () => {
+  const url = "https://www.youtube.com/watch?v=HZft_U4Fc-U";
+  assert.deepEqual(splitMarkdownLinks(url), [{ text: url, href: url, title: "" }]);
+});
+
+test("splitting leaves sentence punctuation after a bare URL outside the link", () => {
+  assert.deepEqual(splitMarkdownLinks("see https://example.com/a, then (https://b.example)."), [
+    { text: "see " },
+    { text: "https://example.com/a", href: "https://example.com/a", title: "" },
+    { text: ", then (" },
+    { text: "https://b.example", href: "https://b.example", title: "" },
+    { text: ")." },
+  ]);
+});
+
+test("splitting keeps a paren the URL itself opened", () => {
+  const url = "https://en.wikipedia.org/wiki/Mir_(disambiguation)";
+  assert.deepEqual(splitMarkdownLinks(url), [{ text: url, href: url, title: "" }]);
+});
+
+test("splitting handles a bare URL next to a markdown link", () => {
+  assert.deepEqual(splitMarkdownLinks("[a](https://a.example) or https://b.example"), [
+    { text: "a", href: "https://a.example", title: "" },
+    { text: " or " },
+    { text: "https://b.example", href: "https://b.example", title: "" },
+  ]);
+});
+
+test("splitting ignores hostnames without a scheme and an empty scheme", () => {
+  assert.equal(splitMarkdownLinks("example.com and www.example.com"), null);
+  assert.equal(splitMarkdownLinks("https:// nothing"), null);
+});
+
 test("normalizeExternalUrl handles schemes and bare hostnames", () => {
   assert.equal(normalizeExternalUrl("https://example.com"), "https://example.com");
   assert.equal(normalizeExternalUrl("http://example.com"), "http://example.com");
