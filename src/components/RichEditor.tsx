@@ -87,6 +87,8 @@ import {
 import { openExternalUrl } from "../services/fileService";
 import {
   MARKDOWN_LINK_INPUT,
+  isPlainTextHtml,
+  linkifySlice,
   splitMarkdownLinks,
 } from "../utils/markdownLinks";
 import {
@@ -490,7 +492,12 @@ const markdownLinkPastePlugin = $prose((ctx) => {
       handlePaste: (view, event) => {
         const clipboard = event.clipboardData;
         if (!clipboard) return false;
-        if (clipboard.types.includes("text/html")) return false;
+        if (
+          clipboard.types.includes("text/html") &&
+          !isPlainTextHtml(clipboard.getData("text/html"))
+        ) {
+          return false;
+        }
         if (view.state.selection.$from.parent.type.spec.code) return false;
 
         const text = clipboard.getData("text/plain");
@@ -539,6 +546,9 @@ const markdownLinkPastePlugin = $prose((ctx) => {
 // it covers HTML from rich-text apps as well as plain text. Registered after
 // markdownLinkPastePlugin, which does the same conversion on its own slice.
 //
+// Bare URLs in the paste become links here too (linkifySlice), since this is
+// the one place every paste passes through after the clipboard is parsed.
+//
 // Copies made inside the editor are left alone: those are the user's own
 // paragraphs being moved around, and a file that already has "• item" lines
 // keeps them.
@@ -552,7 +562,10 @@ const unicodeBulletPastePlugin = $prose((ctx) => {
           return false;
         }
 
-        const converted = withPastedBullets(ctx, view.state, slice);
+        const converted = linkifySlice(
+          withPastedBullets(ctx, view.state, slice),
+          linkSchema.type(ctx),
+        );
         if (converted === slice) return false;
 
         view.dispatch(
