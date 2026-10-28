@@ -27,6 +27,8 @@ function stripInlineMarkdown(text: string): string {
   // *em* / _em_
   result = result.replace(/\*([^*]+)\*/g, "$1");
   result = result.replace(/_([^_]+)_/g, "$1");
+  // Backslash escapes ("35\. Title") -> the literal character, as rendered.
+  result = result.replace(/\\([!-/:-@[-`{-~])/g, "$1");
   return result;
 }
 

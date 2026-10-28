@@ -104,3 +104,9 @@ test("seven hashes are not a heading", () => {
 
   assert.equal(entries.length, 0);
 });
+
+test("heading entries unescape backslash escapes so they match the rendered heading", () => {
+  const entries = extractHeadings("### **35\\. No One Must Know**\n");
+
+  assert.equal(entries[0].plainText, "35. No One Must Know");
+});
