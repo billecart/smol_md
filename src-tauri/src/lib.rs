@@ -20,7 +20,7 @@ use objc2::{define_class, msg_send, DefinedClass, MainThreadMarker, MainThreadOn
 use objc2_app_kit::{NSPrintInfo, NSPrintJobSavingURL, NSPrintOperation, NSPrintSaveJob};
 #[cfg(target_os = "macos")]
 use objc2_foundation::{
-    NSCopying, NSDate, NSDefaultRunLoopMode, NSRunLoop, NSString, NSURL,
+    NSCopying, NSDate, NSDefaultRunLoopMode, NSRunLoop, NSString, NSUserDefaults, NSURL,
 };
 #[cfg(target_os = "macos")]
 use objc2_web_kit::WKWebView;
@@ -852,7 +852,25 @@ fn handle_quit_menu_event(app: &tauri::AppHandle) {
     }
 }
 
+// WKWebView only underlines misspelled words when the app's own defaults say
+// "check spelling while typing", and that key is unset (so off) for a fresh
+// app. Turn it on, but only when it's unset: the editor's right-click menu has
+// Spelling and Grammar > Check Spelling While Typing, and WebKit saves that
+// choice to the same key, so someone who turns it off keeps it off. This has
+// to happen before the webview is created, which reads the key once.
+#[cfg(target_os = "macos")]
+fn enable_spell_checking_by_default() {
+    let defaults = NSUserDefaults::standardUserDefaults();
+    let key = NSString::from_str("WebContinuousSpellCheckingEnabled");
+    if defaults.objectForKey(&key).is_none() {
+        defaults.setBool_forKey(true, &key);
+    }
+}
+
 pub fn run() {
+    #[cfg(target_os = "macos")]
+    enable_spell_checking_by_default();
+
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default();
 
