@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type { RecentDocument } from "../utils/recentDocuments";
 import { normalizeExternalUrl } from "../utils/markdownLinks";
+import type { MisspelledRanges } from "../utils/spellcheck";
 
 export type OpenedMarkdownFile = {
   filePath: string | null;
@@ -313,4 +314,38 @@ function ensureMarkdownExtension(path: string) {
 
 export function getFileName(path: string) {
   return path.split(/[\\/]/).pop() || "Untitled.md";
+}
+
+// Spelling from the system dictionary (macOS only; see utils/spellcheck.ts).
+// Outside the app, and off macOS, nothing is ever misspelled.
+export async function checkSpelling(paragraphs: string[]): Promise<MisspelledRanges[]> {
+  if (!isRunningInTauri()) {
+    return paragraphs.map(() => []);
+  }
+
+  return invoke<MisspelledRanges[]>("check_spelling", { paragraphs });
+}
+
+export async function spellingSuggestions(word: string): Promise<string[]> {
+  if (!isRunningInTauri()) {
+    return [];
+  }
+
+  return invoke<string[]>("spelling_suggestions", { word });
+}
+
+export async function learnSpelling(word: string): Promise<void> {
+  if (!isRunningInTauri()) {
+    return;
+  }
+
+  await invoke("learn_spelling", { word });
+}
+
+export async function ignoreSpelling(word: string): Promise<void> {
+  if (!isRunningInTauri()) {
+    return;
+  }
+
+  await invoke("ignore_spelling", { word });
 }

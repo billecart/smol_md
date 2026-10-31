@@ -616,6 +616,26 @@ input:focus-visible {
   background: rgba(22, 22, 14, 0.065);
 }
 
+.editor-context-menu .editor-context-suggestion {
+  font-weight: 600;
+}
+
+.editor-context-note {
+  display: block;
+  padding: 6px 9px;
+  color: var(--text-muted);
+}
+
+/* Misspelled words (utils/spellcheck.ts), drawn like the Mac's own. */
+.spelling-error {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: #e5484d;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  text-decoration-skip-ink: none;
+}
+
 .editor-context-divider {
   height: 1px;
   margin: 5px 4px;

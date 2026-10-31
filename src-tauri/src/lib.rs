@@ -17,10 +17,13 @@ use objc2::runtime::{AnyObject, Bool, NSObject, NSObjectProtocol, ProtocolObject
 #[cfg(target_os = "macos")]
 use objc2::{define_class, msg_send, DefinedClass, MainThreadMarker, MainThreadOnly};
 #[cfg(target_os = "macos")]
-use objc2_app_kit::{NSPrintInfo, NSPrintJobSavingURL, NSPrintOperation, NSPrintSaveJob};
+use objc2_app_kit::{
+    NSPrintInfo, NSPrintJobSavingURL, NSPrintOperation, NSPrintSaveJob, NSSpellChecker,
+};
 #[cfg(target_os = "macos")]
 use objc2_foundation::{
-    NSCopying, NSDate, NSDefaultRunLoopMode, NSRunLoop, NSString, NSUserDefaults, NSURL,
+    NSCopying, NSDate, NSDefaultRunLoopMode, NSRange, NSRunLoop, NSString, NSTextCheckingType,
+    NSUserDefaults, NSURL,
 };
 #[cfg(target_os = "macos")]
 use objc2_web_kit::WKWebView;
@@ -120,6 +123,108 @@ fn export_pdf(window: tauri::WebviewWindow, path: String) -> Result<(), String> 
         let _ = (window, path);
         Err("PDF export is only available on macOS".into())
     }
+}
+
+// Spelling for the rich editor, from the system dictionary every Mac app
+// shares (so words learned in another app count here too). The editor sends
+// paragraphs here and draws the underlines itself; see
+// utils/spellcheck.ts. Off macOS these find nothing: there the webview's own
+// spellchecker already checks the whole document.
+#[cfg(target_os = "macos")]
+fn spell_document_tag() -> isize {
+    static TAG: std::sync::OnceLock<isize> = std::sync::OnceLock::new();
+    *TAG.get_or_init(NSSpellChecker::uniqueSpellDocumentTag)
+}
+
+// For each paragraph, its misspelled words as [start, length], counted in
+// UTF-16 code units - the same units as JavaScript string offsets.
+#[tauri::command]
+fn check_spelling(paragraphs: Vec<String>) -> Vec<Vec<[usize; 2]>> {
+    #[cfg(target_os = "macos")]
+    {
+        let checker = NSSpellChecker::sharedSpellChecker();
+        let tag = spell_document_tag();
+
+        paragraphs
+            .iter()
+            .map(|paragraph| {
+                let string = NSString::from_str(paragraph);
+                // The checker TextEdit uses. The simpler checkSpellingOfString
+                // missed typos in short lines like "a list itme here",
+                // presumably because it could not tell their language.
+                // SAFETY: no options, no orthography and a null word count
+                // are all allowed.
+                let results = unsafe {
+                    checker.checkString_range_types_options_inSpellDocumentWithTag_orthography_wordCount(
+                        &string,
+                        NSRange::new(0, string.length()),
+                        NSTextCheckingType::Spelling.0,
+                        None,
+                        tag,
+                        None,
+                        std::ptr::null_mut(),
+                    )
+                };
+
+                results
+                    .iter()
+                    .map(|result| {
+                        let range = result.range();
+                        [range.location, range.length]
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        paragraphs.iter().map(|_| Vec::new()).collect()
+    }
+}
+
+#[tauri::command]
+fn spelling_suggestions(word: String) -> Vec<String> {
+    #[cfg(target_os = "macos")]
+    {
+        let string = NSString::from_str(&word);
+        NSSpellChecker::sharedSpellChecker()
+            .guessesForWordRange_inString_language_inSpellDocumentWithTag(
+                NSRange::new(0, string.length()),
+                &string,
+                None,
+                spell_document_tag(),
+            )
+            .map(|guesses| guesses.iter().map(|guess| guess.to_string()).collect())
+            .unwrap_or_default()
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = word;
+        Vec::new()
+    }
+}
+
+// Adds the word to the system dictionary, for good and for every app.
+#[tauri::command]
+fn learn_spelling(word: String) {
+    #[cfg(target_os = "macos")]
+    NSSpellChecker::sharedSpellChecker().learnWord(&NSString::from_str(&word));
+
+    #[cfg(not(target_os = "macos"))]
+    let _ = word;
+}
+
+// Stops flagging the word until the app quits.
+#[tauri::command]
+fn ignore_spelling(word: String) {
+    #[cfg(target_os = "macos")]
+    NSSpellChecker::sharedSpellChecker()
+        .ignoreWord_inSpellDocumentWithTag(&NSString::from_str(&word), spell_document_tag());
+
+    #[cfg(not(target_os = "macos"))]
+    let _ = word;
 }
 
 #[tauri::command]
@@ -852,24 +957,22 @@ fn handle_quit_menu_event(app: &tauri::AppHandle) {
     }
 }
 
-// WKWebView only underlines misspelled words when the app's own defaults say
-// "check spelling while typing", and that key is unset (so off) for a fresh
-// app. Turn it on, but only when it's unset: the editor's right-click menu has
-// Spelling and Grammar > Check Spelling While Typing, and WebKit saves that
-// choice to the same key, so someone who turns it off keeps it off. This has
-// to happen before the webview is created, which reads the key once.
+// WebKit's own spellchecker only checks the words around the text cursor, so
+// typos in a file that was opened rather than typed stayed hidden. The editor
+// does its own checking through `check_spelling` below, so WebKit's is turned
+// off to keep words from getting two underlines. This is the setting behind
+// the right-click menu's Spelling and Grammar > Check Spelling While Typing;
+// it has to be set before the webview is created, which reads it once. Smart
+// quotes and dashes have their own settings and keep working.
 #[cfg(target_os = "macos")]
-fn enable_spell_checking_by_default() {
+fn turn_off_webkit_spell_checking() {
     let defaults = NSUserDefaults::standardUserDefaults();
-    let key = NSString::from_str("WebContinuousSpellCheckingEnabled");
-    if defaults.objectForKey(&key).is_none() {
-        defaults.setBool_forKey(true, &key);
-    }
+    defaults.setBool_forKey(false, &NSString::from_str("WebContinuousSpellCheckingEnabled"));
 }
 
 pub fn run() {
     #[cfg(target_os = "macos")]
-    enable_spell_checking_by_default();
+    turn_off_webkit_spell_checking();
 
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default();
@@ -903,7 +1006,11 @@ pub fn run() {
             print_document,
             export_pdf,
             set_recent_documents,
-            open_url
+            open_url,
+            check_spelling,
+            spelling_suggestions,
+            learn_spelling,
+            ignore_spelling
         ]);
 
     #[cfg(target_os = "macos")]

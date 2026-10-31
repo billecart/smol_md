@@ -84,7 +84,19 @@ import {
   remarkEmptyParagraphMarkers,
   remarkHighlight,
 } from "../utils/markdownSyntax";
-import { openExternalUrl } from "../services/fileService";
+import {
+  checkSpelling,
+  ignoreSpelling,
+  learnSpelling,
+  openExternalUrl,
+  spellingSuggestions,
+} from "../services/fileService";
+import { isMacOs } from "../utils/platform";
+import {
+  misspelledDocumentRanges,
+  spellcheckBlocks,
+  type MisspelledRanges,
+} from "../utils/spellcheck";
 import {
   MARKDOWN_LINK_INPUT,
   isPlainTextHtml,
@@ -721,6 +733,137 @@ const EMPTY_FIND_STATE: FindState = {
   decorations: DecorationSet.empty,
 };
 
+// Spelling underlines on macOS (see utils/spellcheck.ts). Results are kept by
+// paragraph text, so only paragraphs that changed go back to the dictionary,
+// and switching back to a tab costs nothing.
+const spellcheckPluginKey = new PluginKey<DecorationSet>("smolSpelling");
+const spellingResults = new Map<string, MisspelledRanges>();
+// Checks the whole document again, e.g. after a word was learned or ignored.
+let _recheckSpelling: (() => void) | null = null;
+
+// `typingAt` is where the user is typing, if they are: the word there is
+// left alone until they move on.
+function spellingDecorations(state: EditorState, typingAt: number | null) {
+  const ranges = misspelledDocumentRanges(
+    spellcheckBlocks(state.doc),
+    (text) => spellingResults.get(text),
+    typingAt,
+  );
+
+  return DecorationSet.create(
+    state.doc,
+    ranges.map(({ from, to }) => Decoration.inline(from, to, { class: "spelling-error" })),
+  );
+}
+
+function misspellingAt(state: EditorState, pos: number) {
+  const found = spellcheckPluginKey
+    .getState(state)
+    ?.find(pos, pos)
+    .find((decoration) => decoration.from <= pos && pos <= decoration.to);
+
+  return found
+    ? { from: found.from, to: found.to, word: state.doc.textBetween(found.from, found.to) }
+    : null;
+}
+
+const spellcheckPlugin = $prose(
+  () =>
+    new Plugin<DecorationSet>({
+      key: spellcheckPluginKey,
+      state: {
+        init: () => DecorationSet.empty,
+        apply(tr, decorations, _oldState, newState) {
+          const meta = tr.getMeta(spellcheckPluginKey) as
+            | { typingAt: number | null }
+            | undefined;
+
+          if (meta) {
+            return spellingDecorations(newState, meta.typingAt);
+          }
+
+          return tr.docChanged ? decorations.map(tr.mapping, tr.doc) : decorations;
+        },
+      },
+      props: {
+        decorations: (state) => spellcheckPluginKey.getState(state),
+      },
+      view: (editorView) => {
+        // Windows' webview already checks the whole document by itself.
+        if (!isMacOs()) {
+          return {};
+        }
+
+        let timer: number | undefined;
+        let destroyed = false;
+        let typingAt: number | null = null;
+
+        const check = async () => {
+          const missing = [
+            ...new Set(
+              spellcheckBlocks(editorView.state.doc)
+                .map((block) => block.text)
+                .filter((text) => !spellingResults.has(text)),
+            ),
+          ];
+
+          if (missing.length > 0) {
+            let results: MisspelledRanges[];
+
+            try {
+              results = await checkSpelling(missing);
+            } catch {
+              return;
+            }
+
+            if (spellingResults.size > 5000) {
+              spellingResults.clear();
+            }
+
+            missing.forEach((text, index) => spellingResults.set(text, results[index] ?? []));
+          }
+
+          if (!destroyed) {
+            editorView.dispatch(
+              editorView.state.tr
+                .setMeta(spellcheckPluginKey, { typingAt })
+                .setMeta("addToHistory", false),
+            );
+          }
+        };
+
+        const schedule = (delay: number) => {
+          window.clearTimeout(timer);
+          timer = window.setTimeout(() => void check(), delay);
+        };
+
+        _recheckSpelling = () => {
+          spellingResults.clear();
+          schedule(0);
+        };
+        schedule(0);
+
+        return {
+          update: (view, prevState) => {
+            if (view.state.doc !== prevState.doc) {
+              typingAt = view.state.selection.empty ? view.state.selection.head : null;
+              // Wait for a pause in typing.
+              schedule(400);
+            } else if (!view.state.selection.eq(prevState.selection) && typingAt !== null) {
+              // Moved on from the word being typed: it can be underlined now.
+              typingAt = null;
+              schedule(150);
+            }
+          },
+          destroy: () => {
+            destroyed = true;
+            window.clearTimeout(timer);
+          },
+        };
+      },
+    }),
+);
+
 const findPluginKey = new PluginKey<FindState>("smolFind");
 
 // Matching is per text node and non-overlapping, so a match spanning a mark
@@ -912,6 +1055,14 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
   const [canConvertBullets, setCanConvertBullets] = useState(false);
   const [contextMenuPosition, setContextMenuPosition] =
     useState<ContextMenuPosition | null>(null);
+  // The misspelled word under the pointer when the menu opened, with the
+  // dictionary's suggestions (null while they're still being fetched).
+  const [contextMenuMisspelling, setContextMenuMisspelling] = useState<{
+    from: number;
+    to: number;
+    word: string;
+    suggestions: string[] | null;
+  } | null>(null);
   const [linkDialogPos, setLinkDialogPos] = useState<LinkDialogCoords | null>(null);
   const linkInputRef = useRef<HTMLInputElement>(null);
 
@@ -1075,6 +1226,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
         .use(editableHtmlSchema)
         .use(htmlNodeCleanupPlugin)
         .use(codeQuotesPlugin)
+        .use(spellcheckPlugin)
         .use(gfm)
         .use(history)
         .use(listener)
@@ -1278,6 +1430,25 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     setContextMenuPosition(null);
   };
 
+  const replaceMisspelling = (from: number, to: number, replacement: string) => {
+    setContextMenuPosition(null);
+    get()?.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      view.dispatch(view.state.tr.insertText(replacement, from, to));
+      view.focus();
+    });
+  };
+
+  const learnMisspelling = (word: string) => {
+    setContextMenuPosition(null);
+    void learnSpelling(word).then(() => _recheckSpelling?.());
+  };
+
+  const ignoreMisspelling = (word: string) => {
+    setContextMenuPosition(null);
+    void ignoreSpelling(word).then(() => _recheckSpelling?.());
+  };
+
   const openLink = (link: LinkRange) => {
     setContextMenuPosition(null);
     void openExternalUrl(link.href);
@@ -1453,7 +1624,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const menuWidth = 184;
-    const menuHeight = 484;
+    let menuHeight = 484;
 
     // Resolve the link from where the pointer actually is rather than from the
     // selection: whether a right-click moves the caret is up to the browser,
@@ -1461,6 +1632,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     const editor = get();
     let link: LinkRange | null = null;
     let hasBulletLines = false;
+    let misspelling: { from: number; to: number; word: string } | null = null;
 
     editor?.action((ctx) => {
       const view = ctx.get(editorViewCtx);
@@ -1483,12 +1655,30 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
         );
       }
 
+      misspelling = misspellingAt(view.state, at.pos);
       link = findLinkAt(view.state, linkSchema.type(ctx), at.pos);
       hasBulletLines = convertBulletParagraphs(bulletListTypes(ctx))(view.state);
     });
 
     setContextMenuLink(link);
     setCanConvertBullets(hasBulletLines);
+
+    const found = misspelling as { from: number; to: number; word: string } | null;
+    setContextMenuMisspelling(found ? { ...found, suggestions: null } : null);
+
+    if (found) {
+      // Room for up to five suggestions, Learn, Ignore and a divider.
+      menuHeight += 7 * 28 + 11;
+      void spellingSuggestions(found.word)
+        .catch(() => [])
+        .then((suggestions) =>
+          setContextMenuMisspelling((current) =>
+            current?.from === found.from && current.word === found.word
+              ? { ...current, suggestions: suggestions.slice(0, 5) }
+              : current,
+          ),
+        );
+    }
 
     setContextMenuPosition({
       x: Math.min(event.clientX, window.innerWidth - menuWidth - 8),
@@ -1524,6 +1714,48 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
           aria-label="Formatting"
           onMouseDown={(event) => event.preventDefault()}
         >
+          {contextMenuMisspelling ? (
+            <>
+              {contextMenuMisspelling.suggestions === null ? (
+                <span className="editor-context-note">Looking up…</span>
+              ) : contextMenuMisspelling.suggestions.length === 0 ? (
+                <span className="editor-context-note">No suggestions</span>
+              ) : (
+                contextMenuMisspelling.suggestions.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    role="menuitem"
+                    className="editor-context-suggestion"
+                    onClick={() =>
+                      replaceMisspelling(
+                        contextMenuMisspelling.from,
+                        contextMenuMisspelling.to,
+                        suggestion,
+                      )
+                    }
+                  >
+                    {suggestion}
+                  </button>
+                ))
+              )}
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => learnMisspelling(contextMenuMisspelling.word)}
+              >
+                Learn spelling
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => ignoreMisspelling(contextMenuMisspelling.word)}
+              >
+                Ignore spelling
+              </button>
+              <span className="editor-context-divider" aria-hidden="true" />
+            </>
+          ) : null}
           <button
             type="button"
             role="menuitem"
