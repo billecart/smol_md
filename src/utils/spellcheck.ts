@@ -76,6 +76,13 @@ export function misspelledDocumentRanges(
 
   for (const block of blocks) {
     for (const [offset, length] of resultFor(block.text) ?? []) {
+      // The Mac sometimes flags a whole phrase as one misspelling ("nested
+      // item" at the end of a line), spaces and all, and the underline then
+      // ran across inline code too. Only single words are shown.
+      if (/\s/.test(block.text.slice(offset, offset + length))) {
+        continue;
+      }
+
       const from = block.start + offset;
       const to = from + length;
 

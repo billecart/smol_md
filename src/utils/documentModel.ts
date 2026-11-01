@@ -9,6 +9,12 @@ export type OpenDocument = {
   originalMarkdown: string;
   isDirty: boolean;
   lastSavedAt: Date | null;
+  // How the file on disk ends its lines and whether it starts with a
+  // byte-order mark. The editors only ever see "\n" (a textarea reports
+  // nothing else), so a Windows file used to come back with every line
+  // ending changed, and could never be made clean again by undoing.
+  lineEnding: "\n" | "\r\n";
+  hasBom: boolean;
 };
 
 export const EMPTY_MARKDOWN = "# Untitled\n\n";
@@ -31,7 +37,19 @@ export function createDocument(
     originalMarkdown,
     isDirty: overrides.isDirty ?? markdown !== originalMarkdown,
     lastSavedAt: overrides.lastSavedAt ?? null,
+    lineEnding: overrides.lineEnding ?? "\n",
+    hasBom: overrides.hasBom ?? false,
   };
+}
+
+// The text as it goes back to disk, with the file's own line endings and
+// byte-order mark.
+export function toFileText(
+  markdown: string,
+  format: Pick<OpenDocument, "lineEnding" | "hasBom">,
+) {
+  const text = format.lineEnding === "\r\n" ? markdown.replace(/\n/g, "\r\n") : markdown;
+  return format.hasBom ? `\uFEFF${text}` : text;
 }
 
 export function setDocumentMarkdown(
@@ -84,6 +102,31 @@ export function markDocumentSaved(
   };
 }
 
+// After a tab is saved to `filePath`, any other tab that had that file open
+// is showing text that is no longer on disk; saving it later would silently
+// put the old text back. It becomes an unsaved copy instead, so saving it asks
+// where to.
+export function detachOtherDocumentsAtPath(
+  documents: OpenDocument[],
+  savedDocumentId: string,
+  filePath: string | null,
+): OpenDocument[] {
+  if (!filePath) return documents;
+
+  return documents.map((document) =>
+    document.id !== savedDocumentId && document.filePath === filePath
+      ? { ...document, filePath: null, isDirty: true }
+      : document,
+  );
+}
+
+// Whether two versions of a file hold the same text, ignoring line endings and
+// a byte-order mark, which the editor does not keep track of separately.
+export function isSameFileText(a: string, b: string) {
+  const plain = (text: string) => text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+  return plain(a) === plain(b);
+}
+
 export function findExistingDocumentByPath(
   documents: OpenDocument[],
   filePath: string | null,
@@ -106,7 +149,11 @@ export function shouldReplaceInitialDraft(
 }
 
 export function createLoadedDocument(file: OpenedMarkdownFile) {
-  const normalizedMarkdown = normalizeMarkdownLineBreaks(file.markdown);
+  const hasBom = file.markdown.startsWith("\uFEFF");
+  const lineEnding = /\r\n/.test(file.markdown) ? "\r\n" : "\n";
+  const normalizedMarkdown = normalizeMarkdownLineBreaks(
+    file.markdown.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n"),
+  );
 
   return createDocument({
     filePath: file.filePath,
@@ -114,6 +161,8 @@ export function createLoadedDocument(file: OpenedMarkdownFile) {
     markdown: normalizedMarkdown,
     originalMarkdown: normalizedMarkdown,
     isDirty: false,
+    lineEnding,
+    hasBom,
   });
 }
 
@@ -136,7 +185,24 @@ export function addLoadedDocuments(
     );
 
     if (existingDocument) {
-      nextActiveDocument = existingDocument;
+      // Opening a file that is already open used to just show the tab as it
+      // was, even when another app had changed the file since. Without
+      // unsaved edits in the way, show what is on disk now.
+      const refreshed =
+        !existingDocument.isDirty && !isSameFileText(existingDocument.markdown, file.markdown)
+          ? createLoadedDocument(file)
+          : null;
+
+      if (refreshed) {
+        const updated = { ...refreshed, id: existingDocument.id };
+        nextDocuments = nextDocuments.map((document) =>
+          document.id === existingDocument.id ? updated : document,
+        );
+        nextActiveDocument = updated;
+      } else {
+        nextActiveDocument = existingDocument;
+      }
+
       continue;
     }
 

@@ -84,3 +84,11 @@ test("a paragraph with no result yet has no underlines", () => {
 
   assert.deepEqual(ranges, []);
 });
+
+test("a flagged phrase with spaces in it is not underlined", () => {
+  const document = doc(p("nested item"));
+  const blocks = spellcheckBlocks(document);
+  const results = new Map([["nested item", [[0, 11]] as Array<[number, number]>]]);
+
+  assert.deepEqual(misspelledDocumentRanges(blocks, (text) => results.get(text), null), []);
+});

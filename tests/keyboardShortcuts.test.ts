@@ -194,3 +194,31 @@ test("off macOS the windows key does not trigger shortcuts", () => {
     null,
   );
 });
+
+test("on AZERTY, Ctrl+Z (the key US layouts call W) is not Close Tab", () => {
+  assert.equal(
+    getShortcutAction({ code: "KeyW", key: "z", ctrlKey: true, metaKey: false, shiftKey: false }),
+    null,
+  );
+});
+
+test("on AZERTY, Ctrl+W (the key US layouts call Z) closes the tab", () => {
+  assert.equal(
+    getShortcutAction({ code: "KeyZ", key: "w", ctrlKey: true, metaKey: false, shiftKey: false }),
+    "closeTab",
+  );
+});
+
+test("a Russian layout still goes by key position", () => {
+  assert.equal(
+    getShortcutAction({ code: "KeyS", key: "ы", ctrlKey: true, metaKey: false, shiftKey: false }),
+    "save",
+  );
+});
+
+test("Save As works with the shifted capital letter", () => {
+  assert.equal(
+    getShortcutAction({ code: "KeyS", key: "S", ctrlKey: true, metaKey: false, shiftKey: true }),
+    "saveAs",
+  );
+});

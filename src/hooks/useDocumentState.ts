@@ -3,6 +3,7 @@ import { OpenedMarkdownFile } from "../services/fileService";
 import {
   addLoadedDocuments,
   createDocument,
+  detachOtherDocumentsAtPath,
   markDocumentSaved,
   moveDocument,
   setDocumentMarkdown,
@@ -46,10 +47,14 @@ export function useDocumentState() {
   const markSaved = useCallback(
     (markdown: string, filePath: string | null, fileName?: string) => {
       setDocuments((currentDocuments) =>
-        currentDocuments.map((document) =>
-          document.id === activeDocumentId
-            ? markDocumentSaved(document, markdown, filePath, fileName)
-            : document,
+        detachOtherDocumentsAtPath(
+          currentDocuments.map((document) =>
+            document.id === activeDocumentId
+              ? markDocumentSaved(document, markdown, filePath, fileName)
+              : document,
+          ),
+          activeDocumentId,
+          filePath,
         ),
       );
     },

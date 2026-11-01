@@ -16,7 +16,7 @@ export type ShortcutAction =
 type ShortcutEvent = Pick<
   KeyboardEvent,
   "code" | "ctrlKey" | "metaKey" | "shiftKey"
-> & { altKey?: boolean };
+> & { altKey?: boolean; key?: string };
 
 export function getShortcutAction(
   event: ShortcutEvent,
@@ -60,7 +60,15 @@ export function getShortcutAction(
     return null;
   }
 
-  switch (event.code) {
+  // Letters go by the character the key types, not where it sits: on a
+  // French AZERTY keyboard Ctrl+Z is on the key US layouts call W, so going
+  // by position, Undo also closed the tab (and on Dvorak Ctrl+O saved).
+  // Layouts that type no Latin letter at all (Russian, Greek) fall back to
+  // the key's position, the way macOS menus do.
+  const letter = /^[a-z]$/i.test(event.key ?? "") ? event.key!.toUpperCase() : null;
+  const key = letter ? `Key${letter}` : event.code;
+
+  switch (key) {
     case "BracketRight":
       return event.shiftKey ? "nextTab" : null;
     case "BracketLeft":

@@ -3,6 +3,8 @@ import { test } from "./testHarness";
 import {
   addRecentDocument,
   recentDocumentFromPath,
+  recentDocumentLabels,
+  removeRecentDocument,
   type RecentDocument,
 } from "../src/utils/recentDocuments";
 
@@ -58,4 +60,24 @@ test("recent document names are derived from unix and windows paths", () => {
     recentDocumentFromPath("C:\\Notes\\weekly.markdown").fileName,
     "weekly.markdown",
   );
+});
+
+test("recent files with the same name are told apart by their folder", () => {
+  assert.deepEqual(
+    recentDocumentLabels([
+      { filePath: "/work/notes.md", fileName: "notes.md" },
+      { filePath: "/home/notes.md", fileName: "notes.md" },
+      { filePath: "/home/todo.md", fileName: "todo.md" },
+    ]),
+    ["notes.md — work", "notes.md — home", "todo.md"],
+  );
+});
+
+test("a recent file that could not be opened is removed", () => {
+  const recent = [
+    { filePath: "/a.md", fileName: "a.md" },
+    { filePath: "/b.md", fileName: "b.md" },
+  ];
+
+  assert.deepEqual(removeRecentDocument(recent, "/a.md"), [{ filePath: "/b.md", fileName: "b.md" }]);
 });

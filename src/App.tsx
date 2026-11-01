@@ -26,6 +26,7 @@ import {
   listenForOpenedMarkdownFiles,
   openMarkdownFile,
   openMarkdownFileAtPath,
+  readMarkdownFileOnDisk,
   openStartupMarkdownFile,
   exportPdf,
   getFileName,
@@ -43,11 +44,12 @@ import { checkForUpdate } from "./services/updateService";
 import { isMacOs } from "./utils/platform";
 import {
   addRecentDocument,
+  removeRecentDocument,
   loadRecentDocuments,
   saveRecentDocuments,
   type RecentDocument,
 } from "./utils/recentDocuments";
-import { applyPendingMarkdown } from "./utils/documentModel";
+import { applyPendingMarkdown, isSameFileText, toFileText } from "./utils/documentModel";
 import { pickDefaultDirectory } from "./utils/filePaths";
 import { isUnsafeEmptyOverwrite } from "./utils/saveSafety";
 import {
@@ -67,6 +69,8 @@ function App() {
     originalMarkdown,
     isDirty,
     lastSavedAt,
+    lineEnding,
+    hasBom,
     documents,
     activeDocumentId,
     hasDirtyDocuments,
@@ -306,8 +310,12 @@ function App() {
       });
   }, [isDesktopApp, loadDocument, rememberRecentDocument]);
 
+  // Files opened while the app is running: from Finder or the dock on macOS,
+  // and on Windows a double-click in Explorer, which the single-instance
+  // plugin hands to this window (src-tauri/src/lib.rs). This used to run on
+  // macOS only, so on Windows those files never opened.
   useEffect(() => {
-    if (!isMacDesktopApp) {
+    if (!isDesktopApp) {
       return;
     }
 
@@ -376,7 +384,7 @@ function App() {
       isSubscribed = false;
       unlisten?.();
     };
-  }, [isMacDesktopApp, loadDocuments, rememberRecentDocument]);
+  }, [isDesktopApp, loadDocuments, rememberRecentDocument]);
 
   const confirmDiscard = async (
     targetDocument: Pick<OpenDocument, "fileName" | "isDirty"> = documentState,
@@ -444,6 +452,15 @@ function App() {
         setMessage(`Opened ${opened.fileName}`);
       } catch (error) {
         reportProblem(getErrorMessage(error));
+        setRecentDocuments((currentRecentDocuments) => {
+          const nextRecentDocuments = removeRecentDocument(
+            currentRecentDocuments,
+            recentDocument.filePath,
+          );
+
+          saveRecentDocuments(nextRecentDocuments);
+          return nextRecentDocuments;
+        });
       }
     },
     [loadDocument, rememberRecentDocument],
@@ -455,7 +472,10 @@ function App() {
     const latestMarkdown = richEditorRef.current?.flush() ?? markdown;
 
     try {
-      const result = await saveMarkdownFileAs(latestMarkdown, fileName);
+      const result = await saveMarkdownFileAs(
+        toFileText(latestMarkdown, { lineEnding, hasBom }),
+        fileName,
+      );
 
       if (!result) {
         setMessage("Save As cancelled");
@@ -471,7 +491,7 @@ function App() {
     } catch (error) {
       reportProblem(getErrorMessage(error));
     }
-  }, [markdown, fileName, markSaved, rememberRecentDocument]);
+  }, [markdown, fileName, lineEnding, hasBom, markSaved, rememberRecentDocument]);
 
   // Genuinely depends on `markdown` (and `filePath`/`originalMarkdown`,
   // which change together with it) to decide what to write and whether the
@@ -493,13 +513,44 @@ function App() {
         return;
       }
 
-      await saveMarkdownFile(filePath, latestMarkdown);
+      // Another app (Dropbox, iCloud, git, a second editor) may have changed
+      // the file since it was opened or last saved here. Writing over that
+      // without a word lost the other version.
+      const onDisk = await readMarkdownFileOnDisk(filePath);
+
+      if (onDisk !== null && !isSameFileText(onDisk, originalMarkdown)) {
+        const replace = await confirm(
+          `${fileName} was changed by another app since you opened it. Replace it with your version?`,
+          {
+            title: "File changed on disk",
+            kind: "warning",
+            okLabel: "Replace",
+            cancelLabel: "Cancel",
+          },
+        );
+
+        if (!replace) {
+          setMessage("Save cancelled");
+          return;
+        }
+      }
+
+      await saveMarkdownFile(filePath, toFileText(latestMarkdown, { lineEnding, hasBom }));
       markSaved(latestMarkdown, filePath);
       setMessage("Saved");
     } catch (error) {
       reportProblem(getErrorMessage(error));
     }
-  }, [filePath, markdown, originalMarkdown, markSaved, handleSaveAs]);
+  }, [
+    filePath,
+    fileName,
+    markdown,
+    originalMarkdown,
+    lineEnding,
+    hasBom,
+    markSaved,
+    handleSaveAs,
+  ]);
 
   // Declared before the per-document close handlers because closing the last
   // tab falls through to closing the window.
