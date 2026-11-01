@@ -405,10 +405,8 @@ const formattingKeymap = $prose((ctx) =>
         view.dispatch,
       );
     },
-    "Mod-Shift-s": () => {
-      callCommand(toggleStrikethroughCommand.key)(ctx);
-      return true;
-    },
+    // No Mod-Shift-s for strikethrough: that is Save As, and on Windows,
+    // where no native menu catches it first, it did both at once.
   }),
 );
 

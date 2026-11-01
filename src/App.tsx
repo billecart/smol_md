@@ -307,8 +307,12 @@ function App() {
       });
   }, [isDesktopApp, loadDocument, rememberRecentDocument]);
 
+  // Files opened while the app is running: from Finder or the dock on macOS,
+  // and on Windows a double-click in Explorer, which the single-instance
+  // plugin hands to this window (src-tauri/src/lib.rs). This used to run on
+  // macOS only, so on Windows those files never opened.
   useEffect(() => {
-    if (!isMacDesktopApp) {
+    if (!isDesktopApp) {
       return;
     }
 
@@ -377,7 +381,7 @@ function App() {
       isSubscribed = false;
       unlisten?.();
     };
-  }, [isMacDesktopApp, loadDocuments, rememberRecentDocument]);
+  }, [isDesktopApp, loadDocuments, rememberRecentDocument]);
 
   const confirmDiscard = async (
     targetDocument: Pick<OpenDocument, "fileName" | "isDirty"> = documentState,
