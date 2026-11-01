@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import type { RecentDocument } from "../utils/recentDocuments";
+import { recentDocumentLabels, type RecentDocument } from "../utils/recentDocuments";
 import { normalizeExternalUrl } from "../utils/markdownLinks";
 import type { MisspelledRanges } from "../utils/spellcheck";
 
@@ -292,10 +292,12 @@ export async function setRecentDocuments(
     return;
   }
 
+  const labels = recentDocumentLabels(documents);
+
   await invoke("set_recent_documents", {
-    documents: documents.map((document) => ({
+    documents: documents.map((document, index) => ({
       filePath: document.filePath,
-      fileName: document.fileName,
+      fileName: labels[index] ?? document.fileName,
     })),
   });
 }

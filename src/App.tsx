@@ -44,6 +44,7 @@ import { checkForUpdate } from "./services/updateService";
 import { isMacOs } from "./utils/platform";
 import {
   addRecentDocument,
+  removeRecentDocument,
   loadRecentDocuments,
   saveRecentDocuments,
   type RecentDocument,
@@ -451,6 +452,15 @@ function App() {
         setMessage(`Opened ${opened.fileName}`);
       } catch (error) {
         reportProblem(getErrorMessage(error));
+        setRecentDocuments((currentRecentDocuments) => {
+          const nextRecentDocuments = removeRecentDocument(
+            currentRecentDocuments,
+            recentDocument.filePath,
+          );
+
+          saveRecentDocuments(nextRecentDocuments);
+          return nextRecentDocuments;
+        });
       }
     },
     [loadDocument, rememberRecentDocument],

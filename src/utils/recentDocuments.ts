@@ -16,6 +16,29 @@ export function addRecentDocument(
   ].slice(0, RECENT_DOCUMENT_LIMIT);
 }
 
+// A recent file that could not be opened (deleted, renamed, on an unplugged
+// drive) is dropped, rather than failing the same way every time it is
+// picked until newer files push it out.
+export function removeRecentDocument(recentDocuments: RecentDocument[], filePath: string) {
+  return recentDocuments.filter((item) => item.filePath !== filePath);
+}
+
+// What the Open Recent menu shows. Two different notes.md or README.md files
+// looked identical, so a name that appears more than once gets its folder.
+export function recentDocumentLabels(recentDocuments: RecentDocument[]) {
+  const counts = new Map<string, number>();
+  for (const { fileName } of recentDocuments) {
+    counts.set(fileName, (counts.get(fileName) ?? 0) + 1);
+  }
+
+  return recentDocuments.map(({ filePath, fileName }) => {
+    if ((counts.get(fileName) ?? 0) < 2) return fileName;
+
+    const folder = filePath.split(/[\\/]/).slice(-2, -1)[0];
+    return folder ? `${fileName} — ${folder}` : fileName;
+  });
+}
+
 export function loadRecentDocuments() {
   if (typeof localStorage === "undefined") {
     return [];
