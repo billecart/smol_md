@@ -606,10 +606,16 @@ const linkClickPlugin = $prose((ctx) => {
         const { from, to } = view.state.selection;
         if (from !== to) return false;
 
+        // Only a click on the link itself. A link's document range includes
+        // the position right after it, so going by position alone, a click
+        // in the empty space after a line that ends in a link (or on the
+        // right half of the character before one) opened the browser.
         const target = event.target as HTMLElement | null;
         const anchor = target?.closest?.("a");
+        if (!anchor) return false;
+
         const link = findLinkAt(view.state, linkSchema.type(ctx), pos);
-        const href = link?.href || anchor?.getAttribute("href");
+        const href = link?.href || anchor.getAttribute("href");
 
         if (!href) return false;
 

@@ -194,3 +194,15 @@ test("bold stays on a URL that gets linked", () => {
   assert.deepEqual(text?.marks.map((mark) => mark.type.name).sort(), ["link", "strong"]);
 });
 
+
+test("relative, anchor and file links are not turned into web addresses", () => {
+  for (const href of ["#intro", "setup.md", "./img.png", "../notes/", "/Users/me/a.md", "docs/guide.md", "notes", "obsidian://open?vault=x", "file:///tmp/a.md"]) {
+    assert.equal(normalizeExternalUrl(href), null, href);
+  }
+});
+
+test("bare web addresses still open, and spaces are encoded", () => {
+  assert.equal(normalizeExternalUrl("www.example.org/a b"), "https://www.example.org/a%20b");
+  assert.equal(normalizeExternalUrl("https://example.com/a b"), "https://example.com/a%20b");
+  assert.equal(normalizeExternalUrl("sub.example.co.uk?q=1"), "https://sub.example.co.uk?q=1");
+});

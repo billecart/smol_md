@@ -161,11 +161,30 @@ export function isPlainTextHtml(html: string): boolean {
 
 // Normalizes an external URL or email link before dispatching to the OS or browser.
 // Bare hostnames are prefixed with https://; http://, https://, and mailto: are preserved.
+// Anything that is not a web address - `#section`, `notes.md`, `./img.png`,
+// `../other/`, `/abs/path`, another scheme - gives null: putting https://
+// in front of those sent `setup.md` to https://setup.md, someone else's
+// website. Spaces are encoded, since `open` on macOS fails on them.
+const LOCAL_FILE_EXTENSION =
+  /\.(?:md|markdown|mdx|txt|pdf|png|jpe?g|gif|svg|webp|html?|json|ya?ml|csv|docx?|xlsx?)$/i;
+
 export function normalizeExternalUrl(url: string): string | null {
   const trimmed = url.trim();
   if (!trimmed) return null;
 
-  return /^https?:\/\//i.test(trimmed) || /^mailto:/i.test(trimmed)
-    ? trimmed
-    : `https://${trimmed}`;
+  const encoded = trimmed.replace(/ /g, "%20");
+
+  if (/^https?:\/\//i.test(trimmed) || /^mailto:/i.test(trimmed)) {
+    return encoded;
+  }
+
+  // Some other scheme (tel:, file:, obsidian:) or a relative / anchor link.
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) || /^[#/.~\\?]/.test(trimmed)) {
+    return null;
+  }
+
+  const host = trimmed.split(/[/?#]/)[0]!;
+  const looksLikeHost = /^[^\s@]+\.[a-z]{2,}$/i.test(host) && !LOCAL_FILE_EXTENSION.test(host);
+
+  return looksLikeHost ? `https://${encoded}` : null;
 }
