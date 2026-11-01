@@ -107,6 +107,20 @@ export async function openMarkdownFileAtPath(
   };
 }
 
+// The file's text as it is on disk right now, or null when it can't be read
+// (deleted, moved, offline) - used to notice changes made by other apps.
+export async function readMarkdownFileOnDisk(filePath: string): Promise<string | null> {
+  if (!isRunningInTauri()) {
+    return null;
+  }
+
+  try {
+    return await invoke<string>("read_markdown_file", { path: filePath });
+  } catch {
+    return null;
+  }
+}
+
 // Every file is read independently: one that can't be read (an online-only
 // cloud file that times out, say) must not stop the others from opening.
 async function openMarkdownFilesAtPaths(

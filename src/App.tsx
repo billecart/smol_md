@@ -26,6 +26,7 @@ import {
   listenForOpenedMarkdownFiles,
   openMarkdownFile,
   openMarkdownFileAtPath,
+  readMarkdownFileOnDisk,
   openStartupMarkdownFile,
   exportPdf,
   getFileName,
@@ -47,7 +48,7 @@ import {
   saveRecentDocuments,
   type RecentDocument,
 } from "./utils/recentDocuments";
-import { applyPendingMarkdown } from "./utils/documentModel";
+import { applyPendingMarkdown, isSameFileText } from "./utils/documentModel";
 import { pickDefaultDirectory } from "./utils/filePaths";
 import { isUnsafeEmptyOverwrite } from "./utils/saveSafety";
 import {
@@ -493,13 +494,35 @@ function App() {
         return;
       }
 
+      // Another app (Dropbox, iCloud, git, a second editor) may have changed
+      // the file since it was opened or last saved here. Writing over that
+      // without a word lost the other version.
+      const onDisk = await readMarkdownFileOnDisk(filePath);
+
+      if (onDisk !== null && !isSameFileText(onDisk, originalMarkdown)) {
+        const replace = await confirm(
+          `${fileName} was changed by another app since you opened it. Replace it with your version?`,
+          {
+            title: "File changed on disk",
+            kind: "warning",
+            okLabel: "Replace",
+            cancelLabel: "Cancel",
+          },
+        );
+
+        if (!replace) {
+          setMessage("Save cancelled");
+          return;
+        }
+      }
+
       await saveMarkdownFile(filePath, latestMarkdown);
       markSaved(latestMarkdown, filePath);
       setMessage("Saved");
     } catch (error) {
       reportProblem(getErrorMessage(error));
     }
-  }, [filePath, markdown, originalMarkdown, markSaved, handleSaveAs]);
+  }, [filePath, fileName, markdown, originalMarkdown, markSaved, handleSaveAs]);
 
   // Declared before the per-document close handlers because closing the last
   // tab falls through to closing the window.

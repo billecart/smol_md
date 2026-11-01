@@ -84,6 +84,31 @@ export function markDocumentSaved(
   };
 }
 
+// After a tab is saved to `filePath`, any other tab that had that file open
+// is showing text that is no longer on disk; saving it later would silently
+// put the old text back. It becomes an unsaved copy instead, so saving it asks
+// where to.
+export function detachOtherDocumentsAtPath(
+  documents: OpenDocument[],
+  savedDocumentId: string,
+  filePath: string | null,
+): OpenDocument[] {
+  if (!filePath) return documents;
+
+  return documents.map((document) =>
+    document.id !== savedDocumentId && document.filePath === filePath
+      ? { ...document, filePath: null, isDirty: true }
+      : document,
+  );
+}
+
+// Whether two versions of a file hold the same text, ignoring line endings and
+// a byte-order mark, which the editor does not keep track of separately.
+export function isSameFileText(a: string, b: string) {
+  const plain = (text: string) => text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
+  return plain(a) === plain(b);
+}
+
 export function findExistingDocumentByPath(
   documents: OpenDocument[],
   filePath: string | null,
@@ -136,7 +161,24 @@ export function addLoadedDocuments(
     );
 
     if (existingDocument) {
-      nextActiveDocument = existingDocument;
+      // Opening a file that is already open used to just show the tab as it
+      // was, even when another app had changed the file since. Without
+      // unsaved edits in the way, show what is on disk now.
+      const refreshed =
+        !existingDocument.isDirty && existingDocument.markdown !== file.markdown
+          ? createLoadedDocument(file)
+          : null;
+
+      if (refreshed) {
+        const updated = { ...refreshed, id: existingDocument.id };
+        nextDocuments = nextDocuments.map((document) =>
+          document.id === existingDocument.id ? updated : document,
+        );
+        nextActiveDocument = updated;
+      } else {
+        nextActiveDocument = existingDocument;
+      }
+
       continue;
     }
 
