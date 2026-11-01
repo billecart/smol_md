@@ -37,23 +37,29 @@ export function useScrollMemory(documentId: string) {
     currentId.current = documentId;
     restoring.current = true;
 
+    // Scrolling or typing during the wait wins over the saved position.
+    const userInput = ["wheel", "touchmove", "keydown", "pointerdown"];
+    const stop = () => {
+      cancelAnimationFrame(frame);
+      restoring.current = false;
+      userInput.forEach((type) => window.removeEventListener(type, stop, true));
+    };
+
     const restore = () => {
       const reachable = document.documentElement.scrollHeight - window.innerHeight;
       window.scrollTo(0, Math.min(target, reachable));
 
       if (reachable >= target || performance.now() > giveUpAt) {
-        restoring.current = false;
+        stop();
         return;
       }
 
       frame = requestAnimationFrame(restore);
     };
 
+    userInput.forEach((type) => window.addEventListener(type, stop, true));
     restore();
 
-    return () => {
-      cancelAnimationFrame(frame);
-      restoring.current = false;
-    };
+    return stop;
   }, [documentId]);
 }
