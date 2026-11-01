@@ -131,6 +131,17 @@ import { TableOfContents } from "./TableOfContents";
 import { useTableOfContents, type TocEntry } from "../hooks/useTableOfContents";
 import "@milkdown/kit/prose/view/style/prosemirror.css";
 
+// View > Zoom is CSS `zoom` on .document-frame, and it scales the left/top
+// of the fixed-position menu, link box and link preview inside it too.
+// Pointer and caret coordinates are not zoomed, so at 150% those landed half
+// as far again from the pointer, or off-screen. Dividing by the zoom puts
+// them back.
+function pageZoom(element: Element | null | undefined) {
+  const frame = element?.closest(".document-frame");
+  const zoom = frame ? parseFloat(getComputedStyle(frame).zoom) : 1;
+  return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+}
+
 // Module-level state for the link dialog (used by formattingKeymap and component).
 type LinkDialogCoords = { x: number; y: number };
 let _linkDialogCoords: LinkDialogCoords | null = null;
@@ -138,6 +149,9 @@ let _linkDialogOnSubmit: ((href: string) => void) | null = null;
 let _linkDialogSync: (() => void) | null = null;
 
 let _linkDialogInitialHref = "";
+// The editor the dialog was opened from, so closing it can give the keyboard
+// back (otherwise Cmd+Z went nowhere until a click in the text).
+let _linkDialogView: EditorView | null = null;
 
 function openLinkDialog(
   view: EditorView,
@@ -146,17 +160,25 @@ function openLinkDialog(
   atPos?: number,
 ) {
   const coords = view.coordsAtPos(atPos ?? view.state.selection.from);
-  _linkDialogCoords = { x: Math.round(coords.left), y: Math.round(coords.bottom) + 4 };
+  const zoom = pageZoom(view.dom);
+  _linkDialogCoords = {
+    x: Math.round(coords.left / zoom),
+    y: Math.round(coords.bottom / zoom) + 4,
+  };
+  _linkDialogView = view;
   _linkDialogOnSubmit = onSubmit;
   _linkDialogInitialHref = initialHref;
   _linkDialogSync?.();
 }
 
-function closeLinkDialog() {
+function closeLinkDialog(returnFocus = true) {
+  const view = _linkDialogView;
   _linkDialogCoords = null;
   _linkDialogOnSubmit = null;
   _linkDialogInitialHref = "";
+  _linkDialogView = null;
   _linkDialogSync?.();
+  if (returnFocus) view?.focus();
 }
 
 type RichEditorProps = {
@@ -200,8 +222,13 @@ type ContextMenuPosition = {
   y: number;
 };
 
+// In place where a heading is allowed (a quote, a later paragraph of a list
+// item); lifted out only where it is not, such as a list item's first line.
+// Lifting every time took a heading typed in a quote out of the quote.
 function applyHeading(ctx: Ctx, level: number) {
   const view = ctx.get(editorViewCtx);
+
+  if (callCommand(wrapInHeadingCommand.key, level)(ctx)) return;
 
   liftOutOfWrappers(view);
   callCommand(wrapInHeadingCommand.key, level)(ctx);
@@ -344,6 +371,16 @@ const codeQuotesPlugin = $prose(
 
 function applyLink(ctx: Ctx, href: string) {
   const view = ctx.get(editorViewCtx);
+
+  // Nothing selected: put the address in as linked text. Milkdown's toggle
+  // only set a stored mark, which was gone by the time focus came back from
+  // the dialog, so Cmd+K with no selection did nothing at all.
+  if (view.state.selection.empty) {
+    const mark = linkSchema.type(ctx).create({ href });
+    view.dispatch(view.state.tr.replaceSelectionWith(view.state.schema.text(href, [mark]), false));
+    return;
+  }
+
   if (!setLinkOnSelection(view.state, linkSchema.type(ctx), href, view.dispatch)) {
     callCommand(toggleLinkCommand.key, { href })(ctx);
   }
@@ -1147,13 +1184,12 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
         // getClientRects: a link that wraps onto two lines gets the bubble
         // under its first line, not under the whole block.
         const rect = anchor.getClientRects()[0] ?? anchor.getBoundingClientRect();
-        setLinkPreview({
-          href,
-          ...getLinkPreviewPosition(rect, {
-            width: window.innerWidth,
-            height: window.innerHeight,
-          }),
+        const zoom = pageZoom(anchor);
+        const position = getLinkPreviewPosition(rect, {
+          width: window.innerWidth,
+          height: window.innerHeight,
         });
+        setLinkPreview({ href, x: position.x / zoom, y: position.y / zoom });
       }, LINK_PREVIEW_DELAY_MS);
     },
     [hideLinkPreview],
@@ -1444,7 +1480,8 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     };
     const onDown = (e: Event) => {
       if (!(e.target as HTMLElement)?.closest?.(".link-dialog")) {
-        closeLinkDialog();
+        // The click decides where focus goes.
+        closeLinkDialog(false);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -1722,6 +1759,12 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     setContextMenuLink(link);
     setCanConvertBullets(hasBulletLines);
 
+    const zoom = pageZoom(event.currentTarget);
+    // Room for the extra rows: a link's four items replace the one "Link",
+    // and the bullet conversion is shown only sometimes.
+    if (link) menuHeight += 3 * 28 + 11;
+    if (hasBulletLines) menuHeight += 28;
+
     const found = misspelling as { from: number; to: number; word: string } | null;
     setContextMenuMisspelling(found ? { ...found, suggestions: null } : null);
 
@@ -1740,8 +1783,8 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     }
 
     setContextMenuPosition({
-      x: Math.min(event.clientX, window.innerWidth - menuWidth - 8),
-      y: Math.min(event.clientY, window.innerHeight - menuHeight - 8),
+      x: Math.max(8, Math.min(event.clientX, window.innerWidth - menuWidth * zoom - 8)) / zoom,
+      y: Math.max(8, Math.min(event.clientY, window.innerHeight - menuHeight * zoom - 8)) / zoom,
     });
   };
 
