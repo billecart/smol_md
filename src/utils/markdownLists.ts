@@ -68,6 +68,9 @@ export function listStringifyHandlers(getBullet: () => BulletMarker = () => DEFA
   // the checkboxes. Same logic as mdast-util-gfm-task-list-item.
   const listItem: Handle = (node: ListItem, parent, state: State, info: Info) => {
     node.spread = spreadAsBoolean(node.spread);
+    // An empty bullet arrives with no children at all (markdownSyntax.ts,
+    // dropPlaceholderParagraphs).
+    node.children ??= [];
 
     const head = node.children[0];
     const checkable = typeof node.checked === "boolean" && head?.type === "paragraph";

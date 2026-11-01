@@ -1556,3 +1556,17 @@ input:focus-visible {
     background: transparent;
   }
 }
+
+/* Front matter is kept out of the rich editor (utils/frontMatter.ts) and
+   shown read-only above it. */
+.front-matter {
+  margin: 0 0 18px;
+  padding: 8px 12px;
+  border-left: 2px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-family: var(--font-editor);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

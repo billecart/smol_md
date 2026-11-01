@@ -5,10 +5,20 @@ import remarkStringify from "remark-stringify";
 import { unified } from "unified";
 import { test } from "./testHarness";
 import { listStringifyHandlers } from "../src/utils/markdownLists";
-import { doc, marks, p, schema } from "./editorFixtures";
+import {
+  bulletList,
+  codeBlock,
+  doc,
+  listItem,
+  marks,
+  orderedList,
+  p,
+  schema,
+} from "./editorFixtures";
 import {
   MARK_SPACE,
   handleText,
+  dropPlaceholderParagraphs,
   protectMarkSpaces,
   relaxEscapes,
   remarkEmptyParagraphMarkers,
@@ -231,4 +241,22 @@ test("the placeholder is written back as a space", () => {
     ],
   };
   assert.equal(String(processor.stringify(tree as any)), "==**bold** mark==\n");
+});
+
+test("a list item's placeholder first paragraph is left out before saving", () => {
+  const item = schema.node("list_item", null, [p(), codeBlock("npm install")]);
+  const document = doc(orderedList(item, listItem(p("Then run it."))));
+
+  const dropped = dropPlaceholderParagraphs(document);
+
+  assert.deepEqual(
+    (dropped.firstChild!.firstChild!.toJSON().content ?? []).map((node: any) => node.type),
+    ["code_block"],
+  );
+});
+
+test("empty paragraphs the writer made are kept", () => {
+  const document = doc(p("one"), p(), p("two"), bulletList(listItem(p("a"), p(), p("b"))));
+
+  assert.equal(dropPlaceholderParagraphs(document), document);
 });

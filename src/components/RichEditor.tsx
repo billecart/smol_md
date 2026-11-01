@@ -80,6 +80,7 @@ import {
 import { detectBulletMarker, listStringifyHandlers } from "../utils/markdownLists";
 import {
   handleText,
+  dropPlaceholderParagraphs,
   protectMarkSpaces,
   remarkEmptyParagraphMarkers,
   remarkHighlight,
@@ -92,6 +93,7 @@ import {
   spellingSuggestions,
 } from "../services/fileService";
 import { isMacOs } from "../utils/platform";
+import { splitFrontMatter } from "../utils/frontMatter";
 import {
   misspelledDocumentRanges,
   spellcheckBlocks,
@@ -993,13 +995,37 @@ export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(
     ref,
   ) {
     const normalizedValue = normalizeMarkdownLineBreaks(value);
+    // Front matter stays out of the editor and is put back on every change
+    // (utils/frontMatter.ts).
+    const { frontMatter, body } = splitFrontMatter(normalizedValue);
+    const frontMatterRef = useRef(frontMatter);
+    frontMatterRef.current = frontMatter;
+    const innerRef = useRef<RichEditorHandle>(null);
+
+    useImperativeHandle(ref, () => ({
+      runFormatCommand: (id) => innerRef.current?.runFormatCommand(id),
+      flush: () => {
+        const markdown = innerRef.current?.flush() ?? null;
+        return markdown === null ? null : frontMatterRef.current + markdown;
+      },
+    }));
+
+    const handleChange = useCallback(
+      (markdown: string) => onChange(frontMatterRef.current + markdown),
+      [onChange],
+    );
 
     return (
       <MilkdownProvider>
+        {frontMatter ? (
+          <pre className="front-matter" title="Front matter - edit it in Source mode">
+            {frontMatter.trimEnd()}
+          </pre>
+        ) : null}
         <RichEditorInner
-          ref={ref}
-          value={normalizedValue}
-          onChange={onChange}
+          ref={innerRef}
+          value={body}
+          onChange={handleChange}
           onEditPending={onEditPending}
           findQuery={findQuery}
           findActiveIndex={findActiveIndex}
@@ -1050,7 +1076,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
       return null;
     }
 
-    deliverMarkdown(serialize(protectMarkSpaces(view.state.doc)));
+    deliverMarkdown(serialize(protectMarkSpaces(dropPlaceholderParagraphs(view.state.doc))));
     return lastKnownMarkdown.current;
   };
 
@@ -1195,7 +1221,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
               return;
             }
 
-            deliverMarkdown(innerCtx.get(serializerCtx)(protectMarkSpaces(doc)));
+            deliverMarkdown(innerCtx.get(serializerCtx)(protectMarkSpaces(dropPlaceholderParagraphs(doc))));
           });
           // Links and inline code stop at their last letter. Milkdown leaves
           // both marks inclusive (ProseMirror's default), so a space or full

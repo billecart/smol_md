@@ -292,6 +292,49 @@ export function protectMarkSpaces(doc: ProseNode): ProseNode {
   return protect(doc);
 }
 
+// Milkdown writes every empty paragraph as `<br />`, so blank lines the
+// writer made survive a save. Two kinds of empty paragraph are not the
+// writer's, though. A list item has to start with a paragraph, so one that
+// starts with a code block, quote, table, heading or nested list gets an
+// empty one put in front (and an empty bullet is nothing but one); and an
+// empty table cell holds an empty paragraph. Saved, those came out as
+// `1. <br />` above the code block, `- <br />` and `| <br /> |`. They are left out before serializing.
+const TABLE_CELLS = new Set(["table_cell", "table_header"]);
+
+export function dropPlaceholderParagraphs(doc: ProseNode): ProseNode {
+  const drop = (node: ProseNode): ProseNode => {
+    if (node.isLeaf || node.isTextblock) return node;
+
+    let changed = false;
+    const children: ProseNode[] = [];
+
+    node.forEach((child, _offset, index) => {
+      const isPlaceholder =
+        child.type.name === "paragraph" &&
+        child.content.size === 0 &&
+        ((node.type.name === "list_item" &&
+          index === 0 &&
+          // A task item's checkbox is written in front of its first
+          // paragraph, so an empty task keeps it.
+          typeof node.attrs.checked !== "boolean") ||
+          TABLE_CELLS.has(node.type.name));
+
+      if (isPlaceholder) {
+        changed = true;
+        return;
+      }
+
+      const next = drop(child);
+      changed ||= next !== child;
+      children.push(next);
+    });
+
+    return changed ? node.copy(Fragment.fromArray(children)) : node;
+  };
+
+  return drop(doc);
+}
+
 export function handleText(node: any, _parent: any, state: any, info: any) {
   const value: string = String(node.value).split(MARK_SPACE).join(" ");
   // The same as Milkdown's own text handler, which this replaces.
