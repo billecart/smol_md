@@ -738,8 +738,10 @@ const EMPTY_FIND_STATE: FindState = {
 // and switching back to a tab costs nothing.
 const spellcheckPluginKey = new PluginKey<DecorationSet>("smolSpelling");
 const spellingResults = new Map<string, MisspelledRanges>();
-// Checks the whole document again, e.g. after a word was learned or ignored.
-let _recheckSpelling: (() => void) | null = null;
+// Checks again every paragraph with this word in it, after it was learned
+// or ignored.
+let _recheckSpelling: ((word: string) => void) | null = null;
+const SPELLCHECK_BATCH_SIZE = 100;
 
 // `typingAt` is where the user is typing, if they are: the word there is
 // left alone until they move on.
@@ -798,31 +800,7 @@ const spellcheckPlugin = $prose(
         let destroyed = false;
         let typingAt: number | null = null;
 
-        const check = async () => {
-          const missing = [
-            ...new Set(
-              spellcheckBlocks(editorView.state.doc)
-                .map((block) => block.text)
-                .filter((text) => !spellingResults.has(text)),
-            ),
-          ];
-
-          if (missing.length > 0) {
-            let results: MisspelledRanges[];
-
-            try {
-              results = await checkSpelling(missing);
-            } catch {
-              return;
-            }
-
-            if (spellingResults.size > 5000) {
-              spellingResults.clear();
-            }
-
-            missing.forEach((text, index) => spellingResults.set(text, results[index] ?? []));
-          }
-
+        const refresh = () => {
           if (!destroyed) {
             editorView.dispatch(
               editorView.state.tr
@@ -832,13 +810,52 @@ const spellcheckPlugin = $prose(
           }
         };
 
+        const check = async () => {
+          const texts = new Set(spellcheckBlocks(editorView.state.doc).map((block) => block.text));
+          const missing = [...texts].filter((text) => !spellingResults.has(text));
+
+          // Every edit adds the paragraph's new text, so drop what is no
+          // longer in this document rather than letting the cache grow.
+          if (spellingResults.size > 5000) {
+            for (const text of spellingResults.keys()) {
+              if (!texts.has(text)) spellingResults.delete(text);
+            }
+          }
+
+          // The dictionary runs on the app's main thread, and a novel-length
+          // file takes it about a second, so the window would freeze. In
+          // batches the window stays responsive and underlines fill in as
+          // they come.
+          for (let start = 0; start < missing.length; start += SPELLCHECK_BATCH_SIZE) {
+            const batch = missing.slice(start, start + SPELLCHECK_BATCH_SIZE);
+            let results: MisspelledRanges[] = [];
+
+            try {
+              results = await checkSpelling(batch);
+            } catch {
+              // Left as "no typos" rather than unchecked, so a paragraph the
+              // check can't take isn't sent again on every edit.
+            }
+
+            if (destroyed) return;
+
+            batch.forEach((text, index) => spellingResults.set(text, results[index] ?? []));
+
+            if (start + SPELLCHECK_BATCH_SIZE < missing.length) refresh();
+          }
+
+          refresh();
+        };
+
         const schedule = (delay: number) => {
           window.clearTimeout(timer);
           timer = window.setTimeout(() => void check(), delay);
         };
 
-        _recheckSpelling = () => {
-          spellingResults.clear();
+        _recheckSpelling = (word) => {
+          for (const text of spellingResults.keys()) {
+            if (text.includes(word)) spellingResults.delete(text);
+          }
           schedule(0);
         };
         schedule(0);
@@ -1430,10 +1447,22 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     setContextMenuPosition(null);
   };
 
-  const replaceMisspelling = (from: number, to: number, replacement: string) => {
+  const replaceMisspelling = (
+    from: number,
+    to: number,
+    word: string,
+    replacement: string,
+  ) => {
     setContextMenuPosition(null);
     get()?.action((ctx) => {
       const view = ctx.get(editorViewCtx);
+
+      // The document may have changed since the menu opened; never replace
+      // anything but the word the menu was for.
+      if (to > view.state.doc.content.size || view.state.doc.textBetween(from, to) !== word) {
+        return;
+      }
+
       view.dispatch(view.state.tr.insertText(replacement, from, to));
       view.focus();
     });
@@ -1441,12 +1470,12 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
 
   const learnMisspelling = (word: string) => {
     setContextMenuPosition(null);
-    void learnSpelling(word).then(() => _recheckSpelling?.());
+    void learnSpelling(word).then(() => _recheckSpelling?.(word));
   };
 
   const ignoreMisspelling = (word: string) => {
     setContextMenuPosition(null);
-    void ignoreSpelling(word).then(() => _recheckSpelling?.());
+    void ignoreSpelling(word).then(() => _recheckSpelling?.(word));
   };
 
   const openLink = (link: LinkRange) => {
@@ -1731,6 +1760,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
                       replaceMisspelling(
                         contextMenuMisspelling.from,
                         contextMenuMisspelling.to,
+                        contextMenuMisspelling.word,
                         suggestion,
                       )
                     }
