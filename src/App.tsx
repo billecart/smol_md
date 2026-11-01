@@ -48,7 +48,7 @@ import {
   saveRecentDocuments,
   type RecentDocument,
 } from "./utils/recentDocuments";
-import { applyPendingMarkdown, isSameFileText } from "./utils/documentModel";
+import { applyPendingMarkdown, isSameFileText, toFileText } from "./utils/documentModel";
 import { pickDefaultDirectory } from "./utils/filePaths";
 import { isUnsafeEmptyOverwrite } from "./utils/saveSafety";
 import {
@@ -68,6 +68,8 @@ function App() {
     originalMarkdown,
     isDirty,
     lastSavedAt,
+    lineEnding,
+    hasBom,
     documents,
     activeDocumentId,
     hasDirtyDocuments,
@@ -460,7 +462,10 @@ function App() {
     const latestMarkdown = richEditorRef.current?.flush() ?? markdown;
 
     try {
-      const result = await saveMarkdownFileAs(latestMarkdown, fileName);
+      const result = await saveMarkdownFileAs(
+        toFileText(latestMarkdown, { lineEnding, hasBom }),
+        fileName,
+      );
 
       if (!result) {
         setMessage("Save As cancelled");
@@ -476,7 +481,7 @@ function App() {
     } catch (error) {
       reportProblem(getErrorMessage(error));
     }
-  }, [markdown, fileName, markSaved, rememberRecentDocument]);
+  }, [markdown, fileName, lineEnding, hasBom, markSaved, rememberRecentDocument]);
 
   // Genuinely depends on `markdown` (and `filePath`/`originalMarkdown`,
   // which change together with it) to decide what to write and whether the
@@ -520,13 +525,22 @@ function App() {
         }
       }
 
-      await saveMarkdownFile(filePath, latestMarkdown);
+      await saveMarkdownFile(filePath, toFileText(latestMarkdown, { lineEnding, hasBom }));
       markSaved(latestMarkdown, filePath);
       setMessage("Saved");
     } catch (error) {
       reportProblem(getErrorMessage(error));
     }
-  }, [filePath, fileName, markdown, originalMarkdown, markSaved, handleSaveAs]);
+  }, [
+    filePath,
+    fileName,
+    markdown,
+    originalMarkdown,
+    lineEnding,
+    hasBom,
+    markSaved,
+    handleSaveAs,
+  ]);
 
   // Declared before the per-document close handlers because closing the last
   // tab falls through to closing the window.

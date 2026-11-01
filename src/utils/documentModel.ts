@@ -9,6 +9,12 @@ export type OpenDocument = {
   originalMarkdown: string;
   isDirty: boolean;
   lastSavedAt: Date | null;
+  // How the file on disk ends its lines and whether it starts with a
+  // byte-order mark. The editors only ever see "\n" (a textarea reports
+  // nothing else), so a Windows file used to come back with every line
+  // ending changed, and could never be made clean again by undoing.
+  lineEnding: "\n" | "\r\n";
+  hasBom: boolean;
 };
 
 export const EMPTY_MARKDOWN = "# Untitled\n\n";
@@ -31,7 +37,19 @@ export function createDocument(
     originalMarkdown,
     isDirty: overrides.isDirty ?? markdown !== originalMarkdown,
     lastSavedAt: overrides.lastSavedAt ?? null,
+    lineEnding: overrides.lineEnding ?? "\n",
+    hasBom: overrides.hasBom ?? false,
   };
+}
+
+// The text as it goes back to disk, with the file's own line endings and
+// byte-order mark.
+export function toFileText(
+  markdown: string,
+  format: Pick<OpenDocument, "lineEnding" | "hasBom">,
+) {
+  const text = format.lineEnding === "\r\n" ? markdown.replace(/\n/g, "\r\n") : markdown;
+  return format.hasBom ? `\uFEFF${text}` : text;
 }
 
 export function setDocumentMarkdown(
@@ -131,7 +149,11 @@ export function shouldReplaceInitialDraft(
 }
 
 export function createLoadedDocument(file: OpenedMarkdownFile) {
-  const normalizedMarkdown = normalizeMarkdownLineBreaks(file.markdown);
+  const hasBom = file.markdown.startsWith("\uFEFF");
+  const lineEnding = /\r\n/.test(file.markdown) ? "\r\n" : "\n";
+  const normalizedMarkdown = normalizeMarkdownLineBreaks(
+    file.markdown.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n"),
+  );
 
   return createDocument({
     filePath: file.filePath,
@@ -139,6 +161,8 @@ export function createLoadedDocument(file: OpenedMarkdownFile) {
     markdown: normalizedMarkdown,
     originalMarkdown: normalizedMarkdown,
     isDirty: false,
+    lineEnding,
+    hasBom,
   });
 }
 
@@ -165,7 +189,7 @@ export function addLoadedDocuments(
       // was, even when another app had changed the file since. Without
       // unsaved edits in the way, show what is on disk now.
       const refreshed =
-        !existingDocument.isDirty && existingDocument.markdown !== file.markdown
+        !existingDocument.isDirty && !isSameFileText(existingDocument.markdown, file.markdown)
           ? createLoadedDocument(file)
           : null;
 

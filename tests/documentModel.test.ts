@@ -11,6 +11,7 @@ import {
   moveDocument,
   requiresDiscardConfirmation,
   setDocumentMarkdown,
+  toFileText,
 } from "../src/utils/documentModel";
 import { normalizeMarkdownLineBreaks } from "../src/utils/markdown";
 import {
@@ -309,4 +310,24 @@ test("reopening a file with unsaved edits keeps the edits", () => {
 test("file text comparison ignores line endings and a byte-order mark", () => {
   assert.equal(isSameFileText("﻿a\r\nb\r\n", "a\nb\n"), true);
   assert.equal(isSameFileText("a\nb\n", "a\nc\n"), false);
+});
+
+test("a CRLF file with a byte-order mark is edited as plain lines and saved back the same way", () => {
+  const document = createLoadedDocument({
+    filePath: "/w.md",
+    fileName: "w.md",
+    markdown: "﻿# Title\r\n\r\nBody\r\n",
+  });
+
+  assert.equal(document.markdown, "# Title\n\nBody\n");
+  assert.equal(document.isDirty, false);
+  assert.equal(toFileText(document.markdown, document), "﻿# Title\r\n\r\nBody\r\n");
+});
+
+test("a typed-then-deleted character leaves a CRLF file clean", () => {
+  const document = createLoadedDocument({ filePath: "/w.md", fileName: "w.md", markdown: "a\r\nb\r\n" });
+
+  const edited = setDocumentMarkdown(setDocumentMarkdown(document, "a\nbx\n"), "a\nb\n");
+
+  assert.equal(edited.isDirty, false);
 });

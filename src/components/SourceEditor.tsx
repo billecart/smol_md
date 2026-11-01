@@ -29,11 +29,33 @@ export function SourceEditor({
     onFindMatchCount?.(matchOffsets.length);
   }, [matchOffsets, onFindMatchCount]);
 
+  // Which match was last shown. Edits change the match offsets, and this
+  // effect used to re-run on each one: with Find open, every keystroke in
+  // the text pulled the selection back onto the match, so the next character
+  // typed over it.
+  const lastShownMatch = useRef({ query: "", index: -1 });
+
   useEffect(() => {
     const textarea = textareaRef.current;
     const start = matchOffsets[findActiveIndex];
 
+    if (!findQuery) {
+      // Find closed: show the first match again when it reopens.
+      lastShownMatch.current = { query: "", index: -1 };
+    }
+
     if (!textarea || start === undefined) {
+      return;
+    }
+
+    const shown = lastShownMatch.current;
+    if (shown.query === findQuery && shown.index === findActiveIndex) {
+      return;
+    }
+    lastShownMatch.current = { query: findQuery, index: findActiveIndex };
+
+    // Someone typing in the text is not looking for the next match.
+    if (document.activeElement === textarea) {
       return;
     }
 
