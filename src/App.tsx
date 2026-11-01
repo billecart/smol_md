@@ -10,6 +10,7 @@ import {
   type RichEditorHandle,
 } from "./components/RichEditor";
 import { SourceEditor } from "./components/SourceEditor";
+import { useScrollMemory } from "./hooks/useScrollMemory";
 import { StatusBar } from "./components/StatusBar";
 import { TopTabs } from "./components/TopTabs";
 import { UpdateNotice } from "./components/UpdateNotice";
@@ -131,6 +132,7 @@ function App() {
   const richEditorRef = useRef<RichEditorHandle>(null);
   const latestDocumentsRef = useRef({ documents, activeDocumentId });
   latestDocumentsRef.current = { documents, activeDocumentId };
+  useScrollMemory(activeDocumentId);
 
   // The rich editor reports edits 200ms after the last keystroke, so
   // `documents` can be missing the newest one. Everything that saves the text
