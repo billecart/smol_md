@@ -93,7 +93,12 @@ import {
   spellingSuggestions,
 } from "../services/fileService";
 import { isMacOs } from "../utils/platform";
-import { smartQuote, transformText, type TextTransform } from "../utils/textTransforms";
+import {
+  smartDoubleQuote,
+  smartQuote,
+  transformText,
+  type TextTransform,
+} from "../utils/textTransforms";
 import { DEFAULT_EDITOR_PREFERENCES, type EditorPreferences } from "../utils/editorPreferences";
 import { splitFrontMatter } from "../utils/frontMatter";
 import {
@@ -1064,7 +1069,21 @@ const smartSubstitutionsPlugin = $prose(
           );
           const previous = before.slice(-1);
 
-          if (smartQuotes && (text === '"' || text === "'")) {
+          if (smartQuotes && text === '"') {
+            const textBefore = $from.parent.textBetween(0, $from.parentOffset, undefined, "\ufffc");
+            const { insert, opening } = smartDoubleQuote(textBefore);
+            const tr = view.state.tr;
+
+            if (opening && textBefore[opening.index] !== opening.quote) {
+              const at = $from.start() + opening.index;
+              tr.insertText(opening.quote, at, at + 1);
+            }
+
+            view.dispatch(tr.insertText(insert, from, to));
+            return true;
+          }
+
+          if (smartQuotes && text === "'") {
             view.dispatch(view.state.tr.insertText(smartQuote(text, previous), from, to));
             return true;
           }
