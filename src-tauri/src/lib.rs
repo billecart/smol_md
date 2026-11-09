@@ -9,7 +9,7 @@ use tauri::{Emitter, Manager, RunEvent};
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 use tauri::Url;
 #[cfg(target_os = "macos")]
-use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::{AboutMetadata, CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 #[cfg(target_os = "macos")]
 use objc2::rc::Retained;
 #[cfg(target_os = "macos")]
@@ -431,6 +431,41 @@ fn export_pdf_from_webview(
     }
 }
 
+// The Edit menu's checkmark items, so the frontend can set them from its
+// saved settings (see `set_edit_menu_checks`). macOS only, like the menu.
+#[cfg(target_os = "macos")]
+struct EditMenuChecks {
+    spelling_while_typing: CheckMenuItem<tauri::Wry>,
+    smart_quotes: CheckMenuItem<tauri::Wry>,
+    smart_dashes: CheckMenuItem<tauri::Wry>,
+}
+
+// Called on startup and after each toggle, so the checkmarks always match
+// what the editor is doing (clicking a check item also flips it natively;
+// setting it again here is harmless). A no-op off macOS.
+// Unused off macOS, but the argument names are what the frontend sends.
+#[allow(unused_variables)]
+#[tauri::command]
+fn set_edit_menu_checks(
+    app: tauri::AppHandle,
+    spelling_while_typing: bool,
+    smart_quotes: bool,
+    smart_dashes: bool,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    if let Some(checks) = app.try_state::<EditMenuChecks>() {
+        for (item, checked) in [
+            (&checks.spelling_while_typing, spelling_while_typing),
+            (&checks.smart_quotes, smart_quotes),
+            (&checks.smart_dashes, smart_dashes),
+        ] {
+            item.set_checked(checked).map_err(|error| error.to_string())?;
+        }
+    }
+
+    Ok(())
+}
+
 // Rebuilds ONLY the "Open Recent" submenu in place, leaving the rest of the
 // native menu untouched. The frontend calls this whenever its own
 // `recentDocuments` list changes, since that list (backed by localStorage)
@@ -798,6 +833,58 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
 
     let find_item = MenuItem::with_id(app, "find", "Find", true, Some("CmdOrCtrl+F"))?;
 
+    // The editor does its own spellchecking (see `check_spelling`), so these
+    // drive it rather than WebKit's checker. No grammar: the editor only
+    // checks spelling. The checkmarks start at the defaults and the frontend
+    // corrects them from its saved settings with `set_edit_menu_checks`.
+    let check_document_item = MenuItem::with_id(
+        app,
+        "spelling-next",
+        "Check Document Now",
+        true,
+        Some("CmdOrCtrl+;"),
+    )?;
+    let spelling_while_typing_item = CheckMenuItem::with_id(
+        app,
+        "spelling-while-typing",
+        "Check Spelling While Typing",
+        true,
+        true,
+        None::<&str>,
+    )?;
+    let spelling_menu = Submenu::with_items(
+        app,
+        "Spelling",
+        true,
+        &[
+            &check_document_item,
+            &PredefinedMenuItem::separator(app)?,
+            &spelling_while_typing_item,
+        ],
+    )?;
+
+    let smart_quotes_item =
+        CheckMenuItem::with_id(app, "smart-quotes", "Smart Quotes", true, false, None::<&str>)?;
+    let smart_dashes_item =
+        CheckMenuItem::with_id(app, "smart-dashes", "Smart Dashes", true, false, None::<&str>)?;
+    let substitutions_menu = Submenu::with_items(
+        app,
+        "Substitutions",
+        true,
+        &[&smart_quotes_item, &smart_dashes_item],
+    )?;
+
+    let transformations_menu = Submenu::with_items(
+        app,
+        "Transformations",
+        true,
+        &[
+            &MenuItem::with_id(app, "transform-upper", "Make Upper Case", true, None::<&str>)?,
+            &MenuItem::with_id(app, "transform-lower", "Make Lower Case", true, None::<&str>)?,
+            &MenuItem::with_id(app, "transform-capitalize", "Capitalize", true, None::<&str>)?,
+        ],
+    )?;
+
     let edit_menu = Submenu::with_items(
         app,
         "Edit",
@@ -812,6 +899,10 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &PredefinedMenuItem::select_all(app, None)?,
             &PredefinedMenuItem::separator(app)?,
             &find_item,
+            &PredefinedMenuItem::separator(app)?,
+            &spelling_menu,
+            &substitutions_menu,
+            &transformations_menu,
         ],
     )?;
 
@@ -940,6 +1031,11 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     )?;
 
     app.manage(RecentDocumentsMenuState(Mutex::new(open_recent_submenu)));
+    app.manage(EditMenuChecks {
+        spelling_while_typing: spelling_while_typing_item,
+        smart_quotes: smart_quotes_item,
+        smart_dashes: smart_dashes_item,
+    });
 
     Ok(menu)
 }
@@ -1010,7 +1106,8 @@ pub fn run() {
             check_spelling,
             spelling_suggestions,
             learn_spelling,
-            ignore_spelling
+            ignore_spelling,
+            set_edit_menu_checks
         ]);
 
     #[cfg(target_os = "macos")]

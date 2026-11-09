@@ -365,3 +365,21 @@ export async function ignoreSpelling(word: string): Promise<void> {
 
   await invoke("ignore_spelling", { word });
 }
+
+// Puts the Edit menu's checkmarks in step with the editor's settings (macOS
+// only; see set_edit_menu_checks in src-tauri/src/lib.rs).
+export async function setEditMenuChecks(preferences: {
+  checkSpellingWhileTyping: boolean;
+  smartQuotes: boolean;
+  smartDashes: boolean;
+}): Promise<void> {
+  if (!isRunningInTauri()) {
+    return;
+  }
+
+  await invoke("set_edit_menu_checks", {
+    spellingWhileTyping: preferences.checkSpellingWhileTyping,
+    smartQuotes: preferences.smartQuotes,
+    smartDashes: preferences.smartDashes,
+  });
+}

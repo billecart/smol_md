@@ -1,6 +1,6 @@
 [[permission]]
 identifier = "file-commands"
-description = "Allow smol_md to read and write Markdown files selected by the user, receive files opened from Finder or the dock, and confirm quitting with unsaved work, and check spelling against the system dictionary."
+description = "Allow smol_md to read and write Markdown files selected by the user, receive files opened from Finder or the dock, and confirm quitting with unsaved work, and check spelling against the system dictionary, and keep the Edit menu's checkmarks in step with the editor."
 commands.allow = [
   "get_startup_markdown_file_path",
   "take_opened_markdown_file_paths",
@@ -15,5 +15,6 @@ commands.allow = [
   "check_spelling",
   "spelling_suggestions",
   "learn_spelling",
-  "ignore_spelling"
+  "ignore_spelling",
+  "set_edit_menu_checks"
 ]

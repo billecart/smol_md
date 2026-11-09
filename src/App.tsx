@@ -8,7 +8,14 @@ import {
   RichEditor,
   type FormatCommandId,
   type RichEditorHandle,
+  setRichEditorPreferences,
 } from "./components/RichEditor";
+import {
+  loadEditorPreferences,
+  saveEditorPreferences,
+  type EditorPreferences,
+} from "./utils/editorPreferences";
+import { transformText, type TextTransform } from "./utils/textTransforms";
 import { SourceEditor } from "./components/SourceEditor";
 import { useScrollMemory } from "./hooks/useScrollMemory";
 import { StatusBar } from "./components/StatusBar";
@@ -39,6 +46,7 @@ import {
   type OpenedMarkdownFile,
   type OpenedMarkdownFilesResult,
   openExternalUrl,
+  setEditMenuChecks,
 } from "./services/fileService";
 import { checkForUpdate } from "./services/updateService";
 import { isMacOs } from "./utils/platform";
@@ -134,6 +142,18 @@ function App() {
   const isDesktopApp = isRunningInTauri();
   const isMacDesktopApp = isDesktopApp && isMacOs();
   const richEditorRef = useRef<RichEditorHandle>(null);
+  const [editorPreferences, setEditorPreferences] =
+    useState<EditorPreferences>(loadEditorPreferences);
+
+  // Edit menu switches: the editor reads them, they're kept for next time,
+  // and the native menu's checkmarks follow.
+  useEffect(() => {
+    setRichEditorPreferences(editorPreferences);
+    saveEditorPreferences(editorPreferences);
+    if (isMacDesktopApp) {
+      void setEditMenuChecks(editorPreferences).catch(() => undefined);
+    }
+  }, [editorPreferences, isMacDesktopApp]);
   const latestDocumentsRef = useRef({ documents, activeDocumentId });
   latestDocumentsRef.current = { documents, activeDocumentId };
   useScrollMemory(activeDocumentId);
@@ -746,6 +766,46 @@ function App() {
     [],
   );
 
+  // Edit > Spelling, Substitutions and Transformations from the native menu.
+  // Spelling and substitutions work in the rich editor only: Source mode
+  // shows the Markdown as it is, quotes and all.
+  const handleEditMenuAction = (id: string) => {
+    const toggle = (key: keyof EditorPreferences) =>
+      setEditorPreferences((current) => ({ ...current, [key]: !current[key] }));
+
+    switch (id) {
+      case "spelling-while-typing":
+        toggle("checkSpellingWhileTyping");
+        return true;
+      case "smart-quotes":
+        toggle("smartQuotes");
+        return true;
+      case "smart-dashes":
+        toggle("smartDashes");
+        return true;
+      case "spelling-next":
+        if (editorMode !== "rich") {
+          setMessage("Spelling is checked in Rich mode");
+        } else if (!richEditorRef.current?.selectNextMisspelling()) {
+          setMessage("No spelling mistakes found");
+        }
+        return true;
+      case "transform-upper":
+      case "transform-lower":
+      case "transform-capitalize": {
+        const transform = id.slice("transform-".length) as TextTransform;
+        if (editorMode === "rich") {
+          richEditorRef.current?.transformSelection(transform);
+        } else {
+          transformSourceSelection(transform);
+        }
+        return true;
+      }
+      default:
+        return false;
+    }
+  };
+
   // Most of these handlers are recreated often (handleOpen/handleSave/etc.
   // depend on things that change every keystroke), so the menu-action
   // listener effect below can't list them as dependencies without
@@ -768,6 +828,7 @@ function App() {
     handleZoomReset,
     handleNextTab,
     handlePreviousTab,
+    handleEditMenuAction,
     recentDocuments,
   });
 
@@ -788,6 +849,7 @@ function App() {
       handleZoomReset,
       handleNextTab,
       handlePreviousTab,
+      handleEditMenuAction,
       recentDocuments,
     };
   });
@@ -820,6 +882,10 @@ function App() {
           void handlers.handleOpenRecent(recentDocument);
         }
 
+        return;
+      }
+
+      if (handlers.handleEditMenuAction(id)) {
         return;
       }
 
@@ -1038,3 +1104,37 @@ function getErrorMessage(error: unknown) {
 }
 
 export default App;
+
+// Transformations in Source mode act on the textarea's selection, or the word
+// at the cursor. insertText keeps it on the textarea's own undo stack and
+// reports the change like typing does.
+function transformSourceSelection(transform: TextTransform) {
+  const textarea = document.querySelector<HTMLTextAreaElement>(".source-editor");
+  if (!textarea) return;
+
+  let start = textarea.selectionStart;
+  let end = textarea.selectionEnd;
+  const text = textarea.value;
+  const isWord = (character: string | undefined) =>
+    character !== undefined && /[\p{L}\p{N}'’]/u.test(character);
+
+  if (start === end) {
+    while (start > 0 && isWord(text[start - 1])) start -= 1;
+    while (end < text.length && isWord(text[end])) end += 1;
+    if (start === end) return;
+  }
+
+  const hadSelection = textarea.selectionStart !== textarea.selectionEnd;
+  const caret = textarea.selectionStart;
+  const replacement = transformText(text.slice(start, end), transform, text[start - 1] ?? "");
+
+  textarea.focus();
+  textarea.setSelectionRange(start, end);
+  document.execCommand("insertText", false, replacement);
+
+  if (hadSelection) {
+    textarea.setSelectionRange(start, start + replacement.length);
+  } else {
+    textarea.setSelectionRange(caret, caret);
+  }
+}
