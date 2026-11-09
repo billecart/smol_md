@@ -93,6 +93,8 @@ import {
   spellingSuggestions,
 } from "../services/fileService";
 import { isMacOs } from "../utils/platform";
+import { smartQuote, transformText, type TextTransform } from "../utils/textTransforms";
+import { DEFAULT_EDITOR_PREFERENCES, type EditorPreferences } from "../utils/editorPreferences";
 import { splitFrontMatter } from "../utils/frontMatter";
 import {
   misspelledDocumentRanges,
@@ -212,6 +214,11 @@ export type FormatCommandId =
 
 export type RichEditorHandle = {
   runFormatCommand: (command: FormatCommandId) => void;
+  // Edit > Transformations. With nothing selected, the word at the cursor.
+  transformSelection: (transform: TextTransform) => void;
+  // Edit > Spelling > Check Document Now: selects the next misspelled word
+  // after the cursor, going round to the top. False when there is none.
+  selectNextMisspelling: () => boolean;
   // Hands App any edit the listener has not delivered yet and returns the
   // editor's markdown, or null when App already has the latest text.
   flush: () => string | null;
@@ -786,6 +793,19 @@ const spellingResults = new Map<string, MisspelledRanges>();
 let _recheckSpelling: ((word: string) => void) | null = null;
 const SPELLCHECK_BATCH_SIZE = 100;
 
+// Edit menu settings (utils/editorPreferences.ts), set by App through
+// setRichEditorPreferences. Module-level like _recheckSpelling: only one
+// rich editor is mounted at a time.
+let editorPreferences: EditorPreferences = DEFAULT_EDITOR_PREFERENCES;
+let _redrawSpelling: (() => void) | null = null;
+
+export function setRichEditorPreferences(preferences: EditorPreferences) {
+  const spellingChanged =
+    preferences.checkSpellingWhileTyping !== editorPreferences.checkSpellingWhileTyping;
+  editorPreferences = preferences;
+  if (spellingChanged) _redrawSpelling?.();
+}
+
 // `typingAt` is where the user is typing, if they are: the word there is
 // left alone until they move on.
 function spellingDecorations(state: EditorState, typingAt: number | null) {
@@ -831,7 +851,12 @@ const spellcheckPlugin = $prose(
         },
       },
       props: {
-        decorations: (state) => spellcheckPluginKey.getState(state),
+        // Turning Check Spelling While Typing off only hides the underlines:
+        // checking carries on, so Check Document Now still finds typos.
+        decorations: (state) =>
+          editorPreferences.checkSpellingWhileTyping
+            ? spellcheckPluginKey.getState(state)
+            : DecorationSet.empty,
       },
       view: (editorView) => {
         // Windows' webview already checks the whole document by itself.
@@ -895,6 +920,7 @@ const spellcheckPlugin = $prose(
           timer = window.setTimeout(() => void check(), delay);
         };
 
+        _redrawSpelling = refresh;
         _recheckSpelling = (word) => {
           for (const text of spellingResults.keys()) {
             if (text.includes(word)) spellingResults.delete(text);
@@ -918,8 +944,146 @@ const spellcheckPlugin = $prose(
           destroy: () => {
             destroyed = true;
             window.clearTimeout(timer);
+            if (_redrawSpelling === refresh) _redrawSpelling = null;
           },
         };
+      },
+    }),
+);
+
+function isInCode(state: EditorState, pos: number) {
+  const $pos = state.doc.resolve(pos);
+  return (
+    Boolean($pos.parent.type.spec.code) ||
+    $pos.marks().some((mark) => mark.type.name === "inlineCode")
+  );
+}
+
+function selectNextMisspelling(view: EditorView) {
+  const misspellings = spellcheckPluginKey.getState(view.state)?.find() ?? [];
+  if (misspellings.length === 0) return false;
+
+  const sorted = [...misspellings].sort((a, b) => a.from - b.from);
+  const { from, to } = view.state.selection;
+  // Past the word already selected, so pressing it again moves on.
+  const next =
+    sorted.find((decoration) => decoration.from >= to && decoration.from !== from) ?? sorted[0]!;
+
+  view.dispatch(
+    view.state.tr
+      .setSelection(TextSelection.create(view.state.doc, next.from, next.to))
+      .scrollIntoView(),
+  );
+  view.focus();
+  return true;
+}
+
+// The word around the cursor, for Transformations with nothing selected.
+function wordAround(state: EditorState, pos: number) {
+  const $pos = state.doc.resolve(pos);
+  const text = $pos.parent.textBetween(0, $pos.parent.content.size, undefined, "\ufffc");
+  let start = $pos.parentOffset;
+  let end = start;
+  const isWord = (character: string | undefined) =>
+    character !== undefined && /[\p{L}\p{N}'’]/u.test(character);
+
+  while (start > 0 && isWord(text[start - 1])) start -= 1;
+  while (end < text.length && isWord(text[end])) end += 1;
+
+  return { from: $pos.start() + start, to: $pos.start() + end };
+}
+
+function transformSelection(view: EditorView, transform: TextTransform) {
+  const { state } = view;
+  const range = state.selection.empty
+    ? wordAround(state, state.selection.from)
+    : { from: state.selection.from, to: state.selection.to };
+
+  if (range.from === range.to) return;
+
+  // Each run of text keeps its own bold/italic/link. Capitalize needs the
+  // character before each run, which may sit in the run before it.
+  const pieces: Array<{ from: number; to: number; text: string; node: ProseNode }> = [];
+  state.doc.nodesBetween(range.from, range.to, (node, pos) => {
+    if (!node.isText || !node.text) return;
+    const from = Math.max(pos, range.from);
+    const to = Math.min(pos + node.nodeSize, range.to);
+    if (from < to) pieces.push({ from, to, text: node.text.slice(from - pos, to - pos), node });
+  });
+
+  const tr = state.tr;
+  let previous = "";
+  let previousEnd = -1;
+  const replacements = pieces.map((piece) => {
+    const $from = state.doc.resolve(piece.from);
+    const before =
+      piece.from === previousEnd
+        ? previous
+        : piece.from > $from.start()
+          ? state.doc.textBetween(piece.from - 1, piece.from, undefined, " ")
+          : "";
+    previous = piece.text.slice(-1);
+    previousEnd = piece.to;
+    return { ...piece, replacement: transformText(piece.text, transform, before) };
+  });
+
+  for (const piece of replacements.reverse()) {
+    if (piece.replacement !== piece.text) {
+      tr.replaceWith(piece.from, piece.to, state.schema.text(piece.replacement, piece.node.marks));
+    }
+  }
+
+  if (!tr.docChanged) return;
+
+  if (!state.selection.empty) {
+    tr.setSelection(
+      TextSelection.create(tr.doc, tr.mapping.map(range.from, -1), tr.mapping.map(range.to)),
+    );
+  }
+
+  view.dispatch(tr.scrollIntoView());
+}
+
+// Edit > Substitutions. Straight quotes become curly ones and a double
+// hyphen an em dash, as they're typed, outside code. Both off by default.
+const smartSubstitutionsPlugin = $prose(
+  () =>
+    new Plugin({
+      props: {
+        handleTextInput(view, from, to, text) {
+          const { smartQuotes, smartDashes } = editorPreferences;
+          if (!smartQuotes && !smartDashes) return false;
+          if (isInCode(view.state, from)) return false;
+
+          const $from = view.state.doc.resolve(from);
+          const before = $from.parent.textBetween(
+            Math.max(0, $from.parentOffset - 2),
+            $from.parentOffset,
+            undefined,
+            "\ufffc",
+          );
+          const previous = before.slice(-1);
+
+          if (smartQuotes && (text === '"' || text === "'")) {
+            view.dispatch(view.state.tr.insertText(smartQuote(text, previous), from, to));
+            return true;
+          }
+
+          // "--" becomes "—". Not at the start of a paragraph, where "---"
+          // is a horizontal rule and "- " starts a list.
+          if (
+            smartDashes &&
+            text === "-" &&
+            previous === "-" &&
+            before.length === 2 &&
+            before[0] !== "-"
+          ) {
+            view.dispatch(view.state.tr.insertText("\u2014", from - 1, to));
+            return true;
+          }
+
+          return false;
+        },
       },
     }),
 );
@@ -1045,6 +1209,8 @@ export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(
 
     useImperativeHandle(ref, () => ({
       runFormatCommand: (id) => innerRef.current?.runFormatCommand(id),
+      transformSelection: (transform) => innerRef.current?.transformSelection(transform),
+      selectNextMisspelling: () => innerRef.current?.selectNextMisspelling() ?? false,
       flush: () => {
         const markdown = innerRef.current?.flush() ?? null;
         return markdown === null ? null : frontMatterRef.current + markdown;
@@ -1309,6 +1475,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
         .use(editableHtmlSchema)
         .use(htmlNodeCleanupPlugin)
         .use(codeQuotesPlugin)
+        .use(smartSubstitutionsPlugin)
         .use(spellcheckPlugin)
         .use(gfm)
         .use(history)
@@ -1716,7 +1883,17 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     }
   };
 
-  useImperativeHandle(ref, () => ({ runFormatCommand, flush }));
+  const withView = <T,>(action: (view: EditorView) => T, fallback: T): T => {
+    const editor = get();
+    return editor ? editor.action((ctx) => action(ctx.get(editorViewCtx))) : fallback;
+  };
+
+  useImperativeHandle(ref, () => ({
+    runFormatCommand,
+    flush,
+    transformSelection: (transform) => withView((view) => transformSelection(view, transform), undefined),
+    selectNextMisspelling: () => withView(selectNextMisspelling, false),
+  }));
   const openContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const menuWidth = 184;
