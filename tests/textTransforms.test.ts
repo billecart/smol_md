@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "./testHarness";
-import { smartQuote, transformText } from "../src/utils/textTransforms";
+import { smartDoubleQuote, smartQuote, transformText } from "../src/utils/textTransforms";
 import { DEFAULT_EDITOR_PREFERENCES, loadEditorPreferences } from "../src/utils/editorPreferences";
 
 test("transformText upper- and lower-cases, Cyrillic too", () => {
@@ -34,4 +34,31 @@ test("editor preferences default to spelling on and substitutions off", () => {
     smartDashes: false,
   });
   assert.deepEqual(loadEditorPreferences(), DEFAULT_EDITOR_PREFERENCES);
+});
+
+test("smartDoubleQuote uses « » for Russian and “ ” otherwise", () => {
+  assert.deepEqual(smartDoubleQuote("Он сказал "), { insert: "\u00AB" });
+  assert.deepEqual(smartDoubleQuote("She said "), { insert: "\u201C" });
+  assert.deepEqual(smartDoubleQuote("Он сказал \u00ABпривет"), {
+    insert: "\u00BB",
+    opening: { index: 10, quote: "\u00AB" },
+  });
+});
+
+test("smartDoubleQuote fixes the opening quote to match what was quoted", () => {
+  // A line that starts with a quote has nothing to go on until it closes.
+  assert.deepEqual(smartDoubleQuote("\u201C\u041F\u0440\u0438\u0432\u0435\u0442"), {
+    insert: "\u00BB",
+    opening: { index: 0, quote: "\u00AB" },
+  });
+  // English quoted inside a Russian sentence keeps English quotes.
+  assert.deepEqual(smartDoubleQuote("Леда говорит \u00ABask again"), {
+    insert: "\u201D",
+    opening: { index: 13, quote: "\u201C" },
+  });
+});
+
+test("smartDoubleQuote closes by context when no quote is open", () => {
+  assert.deepEqual(smartDoubleQuote("привет"), { insert: "\u00BB" });
+  assert.deepEqual(smartDoubleQuote("hello"), { insert: "\u201D" });
 });

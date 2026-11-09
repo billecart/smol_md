@@ -34,6 +34,43 @@ export function smartQuote(quote: '"' | "'", before: string) {
   return opening ? "‘" : "’";
 }
 
+function isMostlyCyrillic(text: string) {
+  const cyrillic = text.match(/\p{Script=Cyrillic}/gu)?.length ?? 0;
+  const latin = text.match(/\p{Script=Latin}/gu)?.length ?? 0;
+  return cyrillic > latin;
+}
+
+// A typed straight double quote, given the paragraph's text up to the cursor.
+// Russian text gets « », everything else “ ”. An opening quote is a guess
+// from the text around it; the closing quote looks at what was actually
+// quoted and fixes the opening one to match, so «Привет» comes out right
+// even at the start of a line or inside an English sentence.
+export function smartDoubleQuote(textBefore: string): {
+  insert: string;
+  // Where the opening quote is, and what it should become.
+  opening?: { index: number; quote: string };
+} {
+  const previous = textBefore.slice(-1);
+
+  if (previous === "" || OPENS_QUOTE.test(previous)) {
+    return { insert: isMostlyCyrillic(textBefore) ? "\u00AB" : "\u201C" };
+  }
+
+  const index = Math.max(textBefore.lastIndexOf("\u201C"), textBefore.lastIndexOf("\u00AB"));
+  const isOpen =
+    index !== -1 && !/[\u201D\u00BB]/u.test(textBefore.slice(index + 1));
+
+  if (!isOpen) {
+    return { insert: isMostlyCyrillic(textBefore) ? "\u00BB" : "\u201D" };
+  }
+
+  const russian = isMostlyCyrillic(textBefore.slice(index + 1));
+  return {
+    insert: russian ? "\u00BB" : "\u201D",
+    opening: { index, quote: russian ? "\u00AB" : "\u201C" },
+  };
+}
+
 export function isWordCharacter(character: string) {
   return WORD_CHARACTER.test(character);
 }
