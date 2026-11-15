@@ -1,5 +1,5 @@
 import { lift, setBlockType } from "@milkdown/kit/prose/commands";
-import { liftListItem, sinkListItem } from "@milkdown/kit/prose/schema-list";
+import { liftListItem, sinkListItem, wrapInList } from "@milkdown/kit/prose/schema-list";
 import { canJoin } from "@milkdown/kit/prose/transform";
 import type { EditorState, Transaction } from "@milkdown/kit/prose/state";
 import type { Mark, MarkType, NodeType } from "@milkdown/kit/prose/model";
@@ -47,38 +47,83 @@ export function isInEmptyListItem(state: EditorState, listItem: NodeType) {
   );
 }
 
+// Runs a multi-step edit against a scratch copy of the state and only touches
+// the real view if every step worked, as one transaction. Block formats are
+// escalating attempts (as-is, lifted out of a wrapper, flattened to a
+// paragraph), and the lifting is a real edit: when the last attempt still
+// failed, the earlier ones had already been applied, so the menu item did
+// nothing visible except quietly outdent the selection out of its list.
+function atomically(
+  view: EditorLike,
+  attempt: (draft: EditorLike) => boolean,
+): boolean {
+  const recorded: Transaction[] = [];
+  const draft: EditorLike = {
+    state: view.state,
+    dispatch: (tr) => {
+      recorded.push(tr);
+      draft.state = draft.state.apply(tr);
+    },
+  };
+
+  if (!attempt(draft)) return false;
+  if (recorded.length === 0) return true;
+
+  // Replaying the steps rather than the transactions keeps it one undo step,
+  // and the selection follows by mapping, as it does for each command alone.
+  const tr = view.state.tr;
+  for (const recordedTr of recorded) {
+    for (const step of recordedTr.steps) tr.step(step);
+  }
+
+  view.dispatch(tr.scrollIntoView());
+  return true;
+}
+
 // Steps the selection out of any blockquote or list wrapping it. Block
 // commands report failure rather than doing something sensible when the
 // current block is not where the target format is allowed, and a silent
 // failure reads as a menu item that does nothing.
+//
+// A plain lift handles one block. A selection across several items of one
+// list is a range of list_items, which lift cannot move out of the list, so
+// those go through liftListItem - without it a format applied to a whole
+// selected list found nothing to lift out of and did nothing at all.
 export function liftOutOfWrappers(view: EditorLike) {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const { $from } = view.state.selection;
-    let wrapped = false;
+    let wrapper: "blockquote" | "list_item" | null = null;
 
     for (let depth = $from.depth; depth > 0; depth -= 1) {
       const name = $from.node(depth).type.name;
 
       if (name === "blockquote" || name === "list_item") {
-        wrapped = true;
+        wrapper = name;
         break;
       }
     }
 
-    if (!wrapped || !lift(view.state, view.dispatch)) {
-      return;
-    }
+    if (!wrapper) return;
+
+    const { state, dispatch } = view;
+    const { bullet_list: bullet, ordered_list: ordered, list_item: item } = state.schema.nodes;
+    const range = state.selection.$from.blockRange(state.selection.$to);
+    const spansItems =
+      !!range && (range.parent.type === bullet || range.parent.type === ordered);
+    const lifted =
+      wrapper === "list_item" && spansItems && item
+        ? liftListItem(item)(state, dispatch)
+        : lift(state, dispatch);
+
+    if (!lifted) return;
   }
 }
 
-// Escalating attempt at a block format: as-is, then out of any wrapper, then
-// flattened to a paragraph. A heading or code block cannot be the first child
-// of a list item, so wrapping one in a list only works once it is a paragraph.
-export function runBlockFormat(view: EditorLike, cmd: BlockCommand) {
-  if (cmd(view.state, view.dispatch)) return;
+function attemptBlockFormat(view: EditorLike, cmd: BlockCommand) {
+  if (cmd(view.state, view.dispatch)) return true;
 
   liftOutOfWrappers(view);
-  if (cmd(view.state, view.dispatch)) return;
+  if (cmd(view.state, view.dispatch)) return true;
 
   const paragraph = view.state.schema.nodes.paragraph;
 
@@ -86,7 +131,75 @@ export function runBlockFormat(view: EditorLike, cmd: BlockCommand) {
     setBlockType(paragraph)(view.state, view.dispatch);
   }
 
-  cmd(view.state, view.dispatch);
+  return cmd(view.state, view.dispatch);
+}
+
+// Escalating attempt at a block format: as-is, then out of any wrapper, then
+// flattened to a paragraph. A heading or code block cannot be the first child
+// of a list item, so wrapping one in a list only works once it is a paragraph.
+// All or nothing: returns false and leaves the document untouched when none
+// of the attempts took.
+export function runBlockFormat(view: EditorLike, cmd: BlockCommand): boolean {
+  return atomically(view, (draft) => attemptBlockFormat(draft, cmd));
+}
+
+// Turns the list around the selection into another kind of list, in place.
+// "Numbered list" on a bullet used to go through wrapInList, which is for
+// paragraphs: with several items selected it found nothing to wrap and did
+// nothing, and with the caret in one item it nested or split that item out of
+// its list instead of converting the list. The list the selection sits in -
+// the innermost one holding all of it - is retyped, so a nested list changes
+// without touching the list around it, and items nested below keep theirs.
+//
+// Already the right kind: claims the command and changes nothing, rather than
+// falling through to wrap the item in a second list. Returns false outside a
+// list, for the caller to wrap paragraphs instead.
+export function convertEnclosingList(listType: NodeType): BlockCommand {
+  return (state, dispatch) => {
+    const { bullet_list: bullet, ordered_list: ordered } = state.schema.nodes;
+    const { $from, $to } = state.selection;
+
+    for (let depth = $from.sharedDepth($to.pos); depth > 0; depth -= 1) {
+      const list = $from.node(depth);
+      if (list.type !== bullet && list.type !== ordered) continue;
+      if (list.type === listType) return true;
+
+      if (dispatch) {
+        const pos = $from.before(depth);
+        const tr = state.tr.setNodeMarkup(pos, listType, list.attrs);
+        const isOrdered = listType === ordered;
+
+        // Milkdown keeps what an item shows (its bullet or its number) in
+        // the item itself, and re-derives an item's list from it: a bullet
+        // list whose items still say "ordered" is turned straight back.
+        list.forEach((item, offset, index) => {
+          const declared = item.type.spec.attrs ?? {};
+          if (!("listType" in declared) && !("label" in declared)) return;
+
+          tr.setNodeMarkup(pos + 1 + offset, undefined, {
+            ...item.attrs,
+            listType: isOrdered ? "ordered" : "bullet",
+            label: isOrdered ? `${index + 1}.` : "\u2022",
+          });
+        });
+
+        dispatch(tr.scrollIntoView());
+      }
+
+      return true;
+    }
+
+    return false;
+  };
+}
+
+// Bullet list / Numbered list: convert the list the selection is in, or wrap
+// paragraphs in a new one.
+export function runListFormat(view: EditorLike, listType: NodeType): boolean {
+  return atomically(view, (draft) =>
+    convertEnclosingList(listType)(draft.state, draft.dispatch) ||
+    attemptBlockFormat(draft, wrapInList(listType)),
+  );
 }
 
 // The two key handlers themselves, rather than just the predicates they
@@ -128,9 +241,17 @@ export function enterLeavesEmptyListItem(listItem: NodeType): BlockCommand {
 // because a real EditorView swaps its own state on dispatch; given a bare
 // dispatch it lifted and then applied the block type to the stale state.
 export function makeBodyText(view: EditorLike, paragraph: NodeType) {
-  liftOutOfWrappers(view);
+  return atomically(view, (draft) => {
+    const before = draft.state;
+    liftOutOfWrappers(draft);
 
-  return setBlockType(paragraph)(view.state, view.dispatch);
+    // Already a paragraph once lifted is success, not failure: the lift was
+    // the whole job, and setBlockType reports false when there is nothing
+    // left to change.
+    const typed = setBlockType(paragraph)(draft.state, draft.dispatch);
+
+    return typed || draft.state !== before;
+  });
 }
 
 export type LinkRange = {

@@ -59,13 +59,21 @@ const baseMarks = {
   code: { toDOM: () => ["code", 0] as const },
 };
 
+const withListNodes = addListNodes(
+  // addListNodes wants an OrderedMap, which is what Schema.spec exposes.
+  new Schema({ nodes: baseNodes, marks: baseMarks }).spec.nodes,
+  "paragraph block*",
+  "block",
+);
+
 export const schema = new Schema({
-  nodes: addListNodes(
-    // addListNodes wants an OrderedMap, which is what Schema.spec exposes.
-    new Schema({ nodes: baseNodes, marks: baseMarks }).spec.nodes,
-    "paragraph block*",
-    "block",
-  ),
+  // Milkdown's list items carry what they display (the bullet or the number)
+  // and which kind of list they belong to; it re-derives a list's kind from
+  // them, so converting a list has to rewrite them too.
+  nodes: withListNodes.update("list_item", {
+    ...withListNodes.get("list_item")!,
+    attrs: { label: { default: "\u2022" }, listType: { default: "bullet" } },
+  }),
   marks: baseMarks,
 });
 
@@ -148,6 +156,32 @@ export function stateFrom(document: ProseNode): EditorState {
       TextSelection.create(withoutMarker.doc, at),
     ),
   );
+}
+
+// A state with the first occurrence of `from` through the end of the first
+// occurrence of `to` selected: how a drag across several list items looks.
+export function stateSelecting(document: ProseNode, from: string, to: string) {
+  const find = (text: string) => {
+    let found = -1;
+
+    document.descendants((child, pos) => {
+      if (found < 0 && child.isText && child.text?.includes(text)) {
+        found = pos + child.text.indexOf(text);
+      }
+    });
+
+    if (found < 0) throw new Error(`no text "${text}" in the document`);
+    return found;
+  };
+
+  return EditorState.create({
+    doc: document,
+    selection: TextSelection.create(
+      document,
+      find(from),
+      find(to) + to.length,
+    ),
+  });
 }
 
 // A stand-in for EditorView carrying just what the commands use. `dispatch`
