@@ -1040,6 +1040,73 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
     Ok(menu)
 }
 
+// Quitting from the Dock, at log out or restart, or when another app (an
+// installer replacing smol_md) asks it to quit never goes through the menu's
+// Quit item. AppKit asks the app delegate `applicationShouldTerminate:`, and
+// tao's delegate doesn't answer it, so the app quit at once and unsaved work
+// was gone without a word. This adds the answer to tao's delegate: with
+// unsaved changes, cancel and let the frontend ask, as Cmd+Q does. The
+// frontend's "Close without saving" calls `force_quit`, which clears the flag
+// first, so the second ask goes through.
+#[cfg(target_os = "macos")]
+static QUIT_GUARD_APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
+#[cfg(target_os = "macos")]
+extern "C-unwind" fn application_should_terminate(
+    _this: &AnyObject,
+    _cmd: objc2::runtime::Sel,
+    _sender: *mut AnyObject,
+) -> usize {
+    const TERMINATE_CANCEL: usize = 0;
+    const TERMINATE_NOW: usize = 1;
+
+    match QUIT_GUARD_APP.get() {
+        Some(app) if should_confirm_quit(app) => {
+            // The quit may come while smol_md is in the background; bring the
+            // window forward so the question is seen.
+            if let Some(window) = app.webview_windows().into_values().next() {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+            let _ = app.emit("quit-requested", ());
+            TERMINATE_CANCEL
+        }
+        _ => TERMINATE_NOW,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn guard_system_quit(app: &tauri::AppHandle) {
+    let _ = QUIT_GUARD_APP.set(app.clone());
+
+    unsafe {
+        let ns_app: *mut AnyObject =
+            msg_send![objc2::class!(NSApplication), sharedApplication];
+        if ns_app.is_null() {
+            return;
+        }
+        let delegate: *mut AnyObject = msg_send![ns_app, delegate];
+        if delegate.is_null() {
+            return;
+        }
+
+        let class = (*delegate).class() as *const objc2::runtime::AnyClass
+            as *mut objc2::runtime::AnyClass;
+        let imp: objc2::runtime::Imp = std::mem::transmute(
+            application_should_terminate
+                as extern "C-unwind" fn(&AnyObject, objc2::runtime::Sel, *mut AnyObject) -> usize,
+        );
+        // NSApplicationTerminateReply is an NSUInteger: "Q", self, _cmd, sender.
+        objc2::ffi::class_addMethod(
+            class,
+            objc2::sel!(applicationShouldTerminate:),
+            imp,
+            c"Q@:@".as_ptr(),
+        );
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn handle_quit_menu_event(app: &tauri::AppHandle) {
     if should_confirm_quit(app) {
@@ -1113,6 +1180,10 @@ pub fn run() {
     #[cfg(target_os = "macos")]
     {
         builder = builder
+            .setup(|app| {
+                guard_system_quit(app.handle());
+                Ok(())
+            })
             .menu(|app| build_app_menu(app))
             .on_menu_event(|app, event| {
                 let id = event.id().0.clone();
