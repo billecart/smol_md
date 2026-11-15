@@ -36,7 +36,6 @@ import {
   toggleLinkCommand,
   listItemSchema,
   toggleStrongCommand,
-  wrapInHeadingCommand,
 } from "@milkdown/kit/preset/commonmark";
 import { gfm, toggleStrikethroughCommand } from "@milkdown/kit/preset/gfm";
 import type { Ctx } from "@milkdown/ctx";
@@ -52,7 +51,6 @@ import { Decoration, DecorationSet, EditorView } from "@milkdown/kit/prose/view"
 import { Fragment, Slice } from "@milkdown/kit/prose/model";
 import type { Node as ProseNode, NodeType } from "@milkdown/kit/prose/model";
 import { history } from "@milkdown/kit/plugin/history";
-import { liftListItem, wrapInList } from "@milkdown/kit/prose/schema-list";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import { keymap } from "@milkdown/kit/prose/keymap";
 import {
@@ -125,11 +123,11 @@ import {
   enterLeavesEmptyListItem,
   findLinkAt,
   indentListItem,
-  liftOutOfWrappers,
   makeBodyText,
   outdentListItem,
   removeLinkAt,
   runBlockFormat,
+  runListFormat,
   setLinkOnSelection,
   updateLinkAt,
   type LinkRange,
@@ -238,12 +236,10 @@ type ContextMenuPosition = {
 // item); lifted out only where it is not, such as a list item's first line.
 // Lifting every time took a heading typed in a quote out of the quote.
 function applyHeading(ctx: Ctx, level: number) {
-  const view = ctx.get(editorViewCtx);
-
-  if (callCommand(wrapInHeadingCommand.key, level)(ctx)) return;
-
-  liftOutOfWrappers(view);
-  callCommand(wrapInHeadingCommand.key, level)(ctx);
+  runBlockFormat(
+    ctx.get(editorViewCtx),
+    setBlockType(headingSchema.type(ctx), { level }),
+  );
 }
 
 const customEnterPlugin = $prose(
@@ -1800,7 +1796,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     const editor = get();
     if (!editor) return;
     editor.action((ctx) => {
-      runBlockFormat(ctx.get(editorViewCtx), wrapInList(bulletListSchema.type(ctx)));
+      runListFormat(ctx.get(editorViewCtx), bulletListSchema.type(ctx));
     });
     setContextMenuPosition(null);
   };
@@ -1809,7 +1805,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
     const editor = get();
     if (!editor) return;
     editor.action((ctx) => {
-      runBlockFormat(ctx.get(editorViewCtx), wrapInList(orderedListSchema.type(ctx)));
+      runListFormat(ctx.get(editorViewCtx), orderedListSchema.type(ctx));
     });
     setContextMenuPosition(null);
   };
