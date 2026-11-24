@@ -167,12 +167,16 @@ export async function saveMarkdownFile(
   };
 }
 
+// `contents` may be a function of the chosen path, for text that depends on
+// where the file goes (the links to images beside it - see App's
+// prepareImagesForSave).
 export async function saveMarkdownFileAs(
-  markdown: string,
+  contents: string | ((filePath: string) => Promise<string>),
   currentFileName: string,
 ): Promise<SaveResult | null> {
   if (!isRunningInTauri()) {
     const fileName = ensureMarkdownExtension(currentFileName || "Untitled.md");
+    const markdown = typeof contents === "string" ? contents : await contents(fileName);
     downloadMarkdown(markdown, fileName);
     return {
       filePath: null,
@@ -195,6 +199,7 @@ export async function saveMarkdownFileAs(
   }
 
   const filePath = ensureMarkdownExtension(selected);
+  const markdown = typeof contents === "string" ? contents : await contents(filePath);
   const saved = await saveMarkdownFile(filePath, markdown);
 
   return saved;
@@ -320,7 +325,7 @@ export async function openExternalUrl(url: string): Promise<void> {
   window.open(target, "_blank", "noopener,noreferrer");
 }
 
-function ensureMarkdownExtension(path: string) {
+export function ensureMarkdownExtension(path: string) {
   if (/\.(md|markdown)$/i.test(path)) {
     return path;
   }

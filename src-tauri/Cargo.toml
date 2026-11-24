@@ -17,6 +17,8 @@ tauri-build = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+# Pasted images arrive from the web view as base64; already in the tree.
+base64 = "0.22"
 
 # Windows starts a new process for every file opened from Explorer; this
 # hands the file to the window that is already open instead.

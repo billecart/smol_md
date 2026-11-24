@@ -91,6 +91,10 @@ import {
   spellingSuggestions,
 } from "../services/fileService";
 import { isMacOs } from "../utils/platform";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { isRunningInTauri } from "../services/fileService";
+import { isImagePath } from "../utils/markdownImages";
+import { imageFilesPlugin, insertImagePaths, type ImageFilesOptions } from "./imageFiles";
 import {
   smartDoubleQuote,
   smartQuote,
@@ -194,6 +198,10 @@ type RichEditorProps = {
   findQuery?: string;
   findActiveIndex?: number;
   onFindMatchCount?: (count: number) => void;
+  // Where the document is saved, for the images it links to (null while
+  // Untitled), and where problems saving a pasted image are reported.
+  documentPath?: string | null;
+  onProblem?: (message: string) => void;
 };
 
 // The ids the native macOS Format menu sends through App.tsx's "menu-action"
@@ -1211,6 +1219,8 @@ export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(
       findQuery = "",
       findActiveIndex = 0,
       onFindMatchCount,
+      documentPath = null,
+      onProblem,
     },
     ref,
   ) {
@@ -1252,6 +1262,8 @@ export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(
           findQuery={findQuery}
           findActiveIndex={findActiveIndex}
           onFindMatchCount={onFindMatchCount}
+          documentPath={documentPath}
+          onProblem={onProblem}
         />
       </MilkdownProvider>
     );
@@ -1260,7 +1272,16 @@ export const RichEditor = forwardRef<RichEditorHandle, RichEditorProps>(
 
 const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
   function RichEditorInner(
-    { value, onChange, onEditPending, findQuery, findActiveIndex, onFindMatchCount },
+    {
+      value,
+      onChange,
+      onEditPending,
+      findQuery,
+      findActiveIndex,
+      onFindMatchCount,
+      documentPath = null,
+      onProblem,
+    },
     ref,
   ) {
   const lastKnownMarkdown = useRef(value);
@@ -1314,6 +1335,56 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
       isUnmounted.current = true;
     };
   }, []);
+
+  // Pasted and dropped images (components/imageFiles.ts). The options object
+  // is built once, since the editor's plugins are; refs keep it current.
+  const documentPathRef = useRef<string | null>(documentPath);
+  documentPathRef.current = documentPath;
+  const onProblemRef = useRef(onProblem);
+  onProblemRef.current = onProblem;
+  const imageFilesOptions = useRef<ImageFilesOptions>({
+    documentPath: documentPathRef,
+    onDocumentRewritten: () => {
+      if (isUnmounted.current) return;
+      if (!hasPendingEdit.current) onEditPendingRef.current?.();
+      hasPendingEdit.current = true;
+      flush();
+    },
+    onError: (message) => onProblemRef.current?.(message),
+  }).current;
+
+  // Files dragged in from Finder or Explorer reach the app as paths through
+  // Tauri, never as a DOM drop event. Only image files are taken here.
+  useEffect(() => {
+    if (!isRunningInTauri()) return;
+
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+
+    void getCurrentWebview()
+      .onDragDropEvent((event) => {
+        if (event.payload.type !== "drop") return;
+
+        const paths = event.payload.paths.filter(isImagePath);
+        const view = editorViewRef.current;
+        if (paths.length === 0 || !view || view.isDestroyed) return;
+
+        const scale = window.devicePixelRatio || 1;
+        const { x, y } = event.payload.position;
+        const position = view.posAtCoords({ left: x / scale, top: y / scale })?.pos ?? null;
+        void insertImagePaths(view, paths, position, imageFilesOptions);
+      })
+      .then((stop) => {
+        if (cancelled) stop();
+        else unlisten = stop;
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [imageFilesOptions]);
   const [contextMenuLink, setContextMenuLink] = useState<LinkRange | null>(null);
   // The bullet conversion is offered only when there are "• item" lines for
   // it to convert. Shown all the time it read like a leftover debug item.
@@ -1477,6 +1548,7 @@ const RichEditorInner = forwardRef<RichEditorHandle, RichEditorProps>(
         .use(highlightSchema)
         .use(highlightInputRule)
         .use(linkInputRule)
+        .use(imageFilesPlugin(imageFilesOptions))
         .use(markdownLinkPastePlugin)
         .use(unicodeBulletPastePlugin)
         .use(linkClickPlugin)
