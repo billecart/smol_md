@@ -587,6 +587,135 @@ async fn write_markdown_file(path: String, contents: String) -> Result<(), Strin
         .map_err(|error| format!("Could not finish save: {error}"))?
 }
 
+// Images a document links to, by extension. Reading is limited to these so
+// the rich view's image loader can't be used to read anything else.
+const IMAGE_EXTENSIONS: &[&str] = &[
+    "png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "avif", "heic", "tif", "tiff", "ico",
+];
+
+fn is_image_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| {
+            IMAGE_EXTENSIONS
+                .iter()
+                .any(|allowed| extension.eq_ignore_ascii_case(allowed))
+        })
+        .unwrap_or(false)
+}
+
+// The bytes of an image the document links to, for the rich view to show and
+// for "Share as Single File" to pack into the copy. Returned raw (an
+// ArrayBuffer on the JS side) rather than as JSON numbers.
+#[tauri::command]
+async fn read_image_file(path: String) -> Result<tauri::ipc::Response, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let path = PathBuf::from(path);
+
+        if !is_image_path(&path) {
+            return Err("Not an image file.".to_string());
+        }
+
+        fs::read(&path)
+            .map(tauri::ipc::Response::new)
+            .map_err(|error| format!("Could not read image: {error}"))
+    })
+    .await
+    .map_err(|error| format!("Could not read image: {error}"))?
+}
+
+// Writes a pasted or dropped image into the folder beside the document
+// (`notes.md` -> `notes.assets/`) and returns its path relative to the
+// document, e.g. `notes.assets/image-20261124-103012.png`. A file of the same
+// name with different bytes is never overwritten: the new one gets `-2`,
+// `-3`... Identical bytes reuse the file that is already there.
+fn save_image_file_blocking(
+    document_path: String,
+    file_name: String,
+    data: String,
+) -> Result<String, String> {
+    use base64::Engine;
+
+    let document_path = PathBuf::from(document_path);
+
+    if !is_markdown_path(&document_path) {
+        return Err("Images can only be saved beside a Markdown document.".to_string());
+    }
+
+    let parent = document_path
+        .parent()
+        .ok_or_else(|| "Could not find the document's folder.".to_string())?;
+    let stem = document_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .filter(|stem| !stem.is_empty())
+        .unwrap_or("document");
+    let folder_name = format!("{stem}.assets");
+    let requested = Path::new(&file_name)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.starts_with('.'))
+        .ok_or_else(|| "Invalid image file name.".to_string())?
+        .to_string();
+
+    if !is_image_path(Path::new(&requested)) {
+        return Err("Not an image file.".to_string());
+    }
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data.trim())
+        .map_err(|error| format!("Could not read pasted image: {error}"))?;
+    let folder = parent.join(&folder_name);
+    fs::create_dir_all(&folder)
+        .map_err(|error| format!("Could not create {folder_name}: {error}"))?;
+
+    let requested_path = Path::new(&requested);
+    let base = requested_path
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("image")
+        .to_string();
+    let extension = requested_path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or("png")
+        .to_string();
+
+    for attempt in 1..1000 {
+        let name = if attempt == 1 {
+            format!("{base}.{extension}")
+        } else {
+            format!("{base}-{attempt}.{extension}")
+        };
+        let candidate = folder.join(&name);
+
+        match fs::read(&candidate) {
+            Ok(existing) if existing == bytes => return Ok(format!("{folder_name}/{name}")),
+            Ok(_) => continue,
+            Err(_) if candidate.exists() => continue,
+            Err(_) => {
+                write_file_durably(&candidate, &bytes)?;
+                return Ok(format!("{folder_name}/{name}"));
+            }
+        }
+    }
+
+    Err("Could not find a free name for the image.".to_string())
+}
+
+#[tauri::command]
+async fn save_image_file(
+    document_path: String,
+    file_name: String,
+    data: String,
+) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        save_image_file_blocking(document_path, file_name, data)
+    })
+    .await
+    .map_err(|error| format!("Could not save image: {error}"))?
+}
+
 fn existing_file_has_content(path: &Path) -> Result<bool, String> {
     let metadata =
         fs::metadata(path).map_err(|error| format!("Could not inspect existing file: {error}"))?;
@@ -811,6 +940,14 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
         None::<&str>,
     )?;
 
+    let share_single_file_item = MenuItem::with_id(
+        app,
+        "share-single-file",
+        "Share as Single File…",
+        true,
+        None::<&str>,
+    )?;
+
     let file_menu = Submenu::with_items(
         app,
         "File",
@@ -828,6 +965,7 @@ fn build_app_menu(app: &tauri::AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
             &PredefinedMenuItem::separator(app)?,
             &print_item,
             &export_pdf_item,
+            &share_single_file_item,
         ],
     )?;
 
@@ -1174,7 +1312,9 @@ pub fn run() {
             spelling_suggestions,
             learn_spelling,
             ignore_spelling,
-            set_edit_menu_checks
+            set_edit_menu_checks,
+            read_image_file,
+            save_image_file
         ]);
 
     #[cfg(target_os = "macos")]
@@ -1240,6 +1380,47 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn saves_a_pasted_image_into_the_documents_assets_folder() {
+        use base64::Engine;
+        let dir = unique_test_dir("image-save");
+        fs::create_dir_all(&dir).unwrap();
+        let document = dir.join("My notes.md").display().to_string();
+        let encode = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
+
+        let first =
+            save_image_file_blocking(document.clone(), "image.png".into(), encode(b"one")).unwrap();
+        // Same name, same bytes: the file already there is reused.
+        let again =
+            save_image_file_blocking(document.clone(), "image.png".into(), encode(b"one")).unwrap();
+        // Same name, other bytes: never written over.
+        let other =
+            save_image_file_blocking(document.clone(), "image.png".into(), encode(b"two")).unwrap();
+
+        assert_eq!(first, "My notes.assets/image.png");
+        assert_eq!(again, first);
+        assert_eq!(other, "My notes.assets/image-2.png");
+        assert_eq!(fs::read(dir.join("My notes.assets/image.png")).unwrap(), b"one");
+        assert_eq!(fs::read(dir.join("My notes.assets/image-2.png")).unwrap(), b"two");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn image_save_refuses_paths_and_non_images() {
+        let dir = unique_test_dir("image-refuse");
+        fs::create_dir_all(&dir).unwrap();
+        let document = dir.join("notes.md").display().to_string();
+
+        let escaped =
+            save_image_file_blocking(document.clone(), "../../evil.png".into(), "AAAA".into())
+                .unwrap();
+        assert_eq!(escaped, "notes.assets/evil.png");
+        assert!(save_image_file_blocking(document.clone(), "notes.md".into(), "AAAA".into()).is_err());
+        assert!(save_image_file_blocking(document, ".hidden.png".into(), "AAAA".into()).is_err());
+        assert!(!is_image_path(Path::new("/etc/passwd")));
+        let _ = fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn refuses_empty_overwrite_of_existing_non_empty_file() {

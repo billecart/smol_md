@@ -815,6 +815,29 @@ input:focus-visible {
   -webkit-font-smoothing: auto;
 }
 
+/* Pictures fit the column; a wide screenshot no longer runs off the page. */
+.rich-editor .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  vertical-align: bottom;
+  border-radius: 4px;
+}
+
+.rich-editor .ProseMirror img.ProseMirror-selectednode {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* A link to a picture that isn't there: a visible box with its alt text,
+   rather than nothing at all. */
+.rich-editor .ProseMirror img.image-missing {
+  display: inline-block;
+  min-width: 120px;
+  min-height: 40px;
+  border: 1px dashed currentColor;
+  opacity: 0.5;
+}
+
 .rich-editor .ProseMirror > *:first-child {
   margin-top: 0;
 }

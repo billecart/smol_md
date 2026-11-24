@@ -24,6 +24,7 @@ type ToolbarProps = {
   onOpenRecent: (document: RecentDocument) => void | Promise<void>;
   onSave: () => void | Promise<void>;
   onSaveAs: () => void | Promise<void>;
+  onShareSingleFile: () => void | Promise<void>;
   onClose: () => void | Promise<void>;
   onCloseAll: () => void | Promise<void>;
   onCloseWindow: () => void | Promise<void>;
@@ -45,6 +46,7 @@ function ToolbarComponent({
   onOpenRecent,
   onSave,
   onSaveAs,
+  onShareSingleFile,
   onClose,
   onCloseAll,
   onCloseWindow,
@@ -175,6 +177,13 @@ function ToolbarComponent({
                   onClick={() => void runMenuCommand(onSaveAs)}
                 >
                   save as
+                </button>
+                <button
+                  type="button"
+                  title="Save a copy with its pictures inside, to send as one file"
+                  onClick={() => void runMenuCommand(onShareSingleFile)}
+                >
+                  share as single file
                 </button>
                 <div className="command-menu-divider" aria-hidden="true" />
                 <button type="button" onClick={() => void runMenuCommand(onClose)}>

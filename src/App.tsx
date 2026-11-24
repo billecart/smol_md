@@ -43,6 +43,7 @@ import {
   takeOpenedMarkdownFiles,
   saveMarkdownFile,
   saveMarkdownFileAs,
+  ensureMarkdownExtension,
   type OpenedMarkdownFile,
   type OpenedMarkdownFilesResult,
   openExternalUrl,
@@ -58,7 +59,8 @@ import {
   type RecentDocument,
 } from "./utils/recentDocuments";
 import { applyPendingMarkdown, isSameFileText, toFileText } from "./utils/documentModel";
-import { pickDefaultDirectory } from "./utils/filePaths";
+import { getDirectory, pickDefaultDirectory } from "./utils/filePaths";
+import { inlineLocalImages, prepareImagesForSave } from "./services/imageService";
 import { isUnsafeEmptyOverwrite } from "./utils/saveSafety";
 import {
   LATEST_RELEASE_PAGE_URL,
@@ -490,19 +492,24 @@ function App() {
   // on purpose (see handleSave below for the matching case).
   const handleSaveAs = useCallback(async () => {
     const latestMarkdown = richEditorRef.current?.flush() ?? markdown;
+    let savedMarkdown = latestMarkdown;
 
     try {
-      const result = await saveMarkdownFileAs(
-        toFileText(latestMarkdown, { lineEnding, hasBom }),
-        fileName,
-      );
+      const result = await saveMarkdownFileAs(async (newPath) => {
+        savedMarkdown = await prepareImagesForSave(latestMarkdown, filePath, newPath);
+        return toFileText(savedMarkdown, { lineEnding, hasBom });
+      }, fileName);
 
       if (!result) {
         setMessage("Save As cancelled");
         return;
       }
 
-      markSaved(latestMarkdown, result.filePath, result.fileName);
+      if (savedMarkdown !== latestMarkdown) {
+        setMarkdown(savedMarkdown);
+      }
+
+      markSaved(savedMarkdown, result.filePath, result.fileName);
       rememberRecentDocument({
         filePath: result.filePath,
         fileName: result.fileName,
@@ -511,7 +518,7 @@ function App() {
     } catch (error) {
       reportProblem(getErrorMessage(error));
     }
-  }, [markdown, fileName, lineEnding, hasBom, markSaved, rememberRecentDocument]);
+  }, [markdown, filePath, fileName, lineEnding, hasBom, setMarkdown, markSaved, rememberRecentDocument]);
 
   // Genuinely depends on `markdown` (and `filePath`/`originalMarkdown`,
   // which change together with it) to decide what to write and whether the
@@ -555,8 +562,14 @@ function App() {
         }
       }
 
-      await saveMarkdownFile(filePath, toFileText(latestMarkdown, { lineEnding, hasBom }));
-      markSaved(latestMarkdown, filePath);
+      const savedMarkdown = await prepareImagesForSave(latestMarkdown, filePath, filePath);
+      await saveMarkdownFile(filePath, toFileText(savedMarkdown, { lineEnding, hasBom }));
+
+      if (savedMarkdown !== latestMarkdown) {
+        setMarkdown(savedMarkdown);
+      }
+
+      markSaved(savedMarkdown, filePath);
       setMessage("Saved");
     } catch (error) {
       reportProblem(getErrorMessage(error));
@@ -568,6 +581,7 @@ function App() {
     originalMarkdown,
     lineEnding,
     hasBom,
+    setMarkdown,
     markSaved,
     handleSaveAs,
   ]);
@@ -693,6 +707,60 @@ function App() {
       reportProblem(getErrorMessage(error));
     }
   }, [fileName, reportProblem]);
+
+  // A copy of the document with its pictures packed inside, to send as one
+  // file. The document itself, and its images folder, stay as they are.
+  const handleShareSingleFile = useCallback(async () => {
+    const latestMarkdown = richEditorRef.current?.flush() ?? markdown;
+
+    try {
+      const { markdown: packedMarkdown, packed, missing } = await inlineLocalImages(
+        latestMarkdown,
+        filePath,
+      );
+      const stem = fileName.replace(/\.(md|markdown)$/i, "") || "Untitled";
+      const suggestedName = `${stem} (single file).md`;
+      const directory = filePath ? getDirectory(filePath) : null;
+      const contents = toFileText(packedMarkdown, { lineEnding, hasBom });
+      let targetPath = suggestedName;
+
+      if (isDesktopApp) {
+        const chosen = await save({
+          defaultPath: directory ? `${directory}/${suggestedName}` : suggestedName,
+          filters: [{ name: "Markdown", extensions: ["md", "markdown"] }],
+        });
+
+        if (!chosen) {
+          setMessage("Share cancelled");
+          return;
+        }
+
+        targetPath = ensureMarkdownExtension(chosen);
+
+        if (filePath && targetPath === filePath) {
+          reportProblem("Choose another name: that is the document itself, which keeps its images as files.");
+          return;
+        }
+      }
+
+      await saveMarkdownFile(targetPath, contents);
+      const savedName = targetPath.split(/[\\/]/).pop() ?? suggestedName;
+
+      if (missing.length > 0) {
+        reportProblem(
+          `Saved ${savedName}, but ${missing.length} image${missing.length === 1 ? "" : "s"} could not be found and stayed as links: ${missing.join(", ")}`,
+        );
+      } else {
+        setMessage(
+          packed > 0
+            ? `Saved ${savedName} with ${packed} image${packed === 1 ? "" : "s"} inside`
+            : `Saved ${savedName}`,
+        );
+      }
+    } catch (error) {
+      reportProblem(getErrorMessage(error));
+    }
+  }, [markdown, filePath, fileName, lineEnding, hasBom, isDesktopApp, reportProblem]);
 
   const handleFind = useCallback(() => {
     if (find.isOpen) {
@@ -822,6 +890,7 @@ function App() {
     handleSaveAs,
     handleFind,
     handleExportPdf,
+    handleShareSingleFile,
     toggleEditorMode,
     handleZoomIn,
     handleZoomOut,
@@ -843,6 +912,7 @@ function App() {
       handleSaveAs,
       handleFind,
       handleExportPdf,
+      handleShareSingleFile,
       toggleEditorMode,
       handleZoomIn,
       handleZoomOut,
@@ -920,6 +990,9 @@ function App() {
           break;
         case "export-pdf":
           void handlers.handleExportPdf();
+          break;
+        case "share-single-file":
+          void handlers.handleShareSingleFile();
           break;
         case "find":
           handlers.handleFind();
@@ -1039,6 +1112,7 @@ function App() {
           onOpenRecent={handleOpenRecent}
           onSave={handleSave}
           onSaveAs={handleSaveAs}
+          onShareSingleFile={handleShareSingleFile}
           onClose={handleCloseActiveDocument}
           onCloseAll={handleCloseAllDocuments}
           onCloseWindow={handleCloseWindow}
@@ -1070,6 +1144,8 @@ function App() {
               findQuery={find.isOpen ? find.query : ""}
               findActiveIndex={find.activeIndex}
               onFindMatchCount={find.setMatchCount}
+              documentPath={filePath}
+              onProblem={reportProblem}
             />
           ) : (
             <SourceEditor
